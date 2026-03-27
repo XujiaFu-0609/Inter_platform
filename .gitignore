@@ -1,0 +1,8 @@
+.DS_Store
+.agents/
+paperclip@
+node
+
+工作目录/运维/部署脚本/**/.runtime/
+*.log
+*.pid

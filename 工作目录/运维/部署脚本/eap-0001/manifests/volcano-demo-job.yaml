@@ -1,0 +1,22 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: pi-demo
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  queue: eap-batch
+  tasks:
+    - replicas: 1
+      name: pi
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: pi
+              image: perl:5.34
+              command:
+                - perl
+                - -Mbignum=bpi
+                - -wle
+                - 'print bpi(1000)'

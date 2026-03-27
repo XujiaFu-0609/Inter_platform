@@ -1,0 +1,10 @@
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: eap-batch
+spec:
+  weight: 1
+  reclaimable: true
+  capability:
+    cpu: "8"
+    memory: "16Gi"
