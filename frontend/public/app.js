@@ -1,3 +1,16 @@
+import {
+  ALERT_SEVERITY_VALUES,
+  ENGINE_TYPE_VALUES,
+  RUN_STATUS_VALUES,
+  SLA_TIER_VALUES,
+  applyAlertsFilter,
+  applyRunsFilter,
+  buildGrafanaHref,
+  buildQueryString,
+  normalizeAlertsQuery,
+  normalizeRunsQuery,
+} from "./platform-utils.js";
+
 const state = {
   session: null,
   questions: [],
@@ -7,12 +20,217 @@ const state = {
   lastSaveMessage: "",
   resultSummary: null,
   apiBaseUrl: "",
+  grafanaBaseUrl: "",
+  platformMode: "api",
+  permissions: {
+    canAckAlert: true,
+    canOpenGrafana: true,
+  },
 };
 
 const CANONICAL_API_BASE_PATH = "/api/v1/interview-sessions";
+const PLATFORM_API_BASE_PATH = "/api/v1/platform";
 const API_BASE_URL_STORAGE_KEY = "cloud-native:api-base-url";
+const PLATFORM_CACHE_TTL_MS = 15_000;
 const cleanupTasks = [];
 const appElement = document.querySelector("#app");
+const platformResponseCache = new Map();
+
+const RUN_STATUS_META = {
+  pending: { label: "Pending", tone: "neutral" },
+  running: { label: "Running", tone: "success" },
+  succeeded: { label: "Succeeded", tone: "success" },
+  failed: { label: "Failed", tone: "danger" },
+  cancelling: { label: "Cancelling", tone: "warning" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
+};
+
+const ALERT_STATUS_META = {
+  open: { label: "Open", tone: "danger" },
+  acked: { label: "Acked", tone: "warning" },
+  resolved: { label: "Resolved", tone: "success" },
+};
+
+const HEALTH_STATUS_META = {
+  healthy: { label: "Healthy", tone: "success" },
+  degraded: { label: "Degraded", tone: "warning" },
+  down: { label: "Down", tone: "danger" },
+};
+
+const ALERT_SEVERITY_META = {
+  p0: { label: "P0", tone: "danger" },
+  p1: { label: "P1", tone: "danger" },
+  p2: { label: "P2", tone: "warning" },
+  p3: { label: "P3", tone: "neutral" },
+};
+
+const platformMockStore = {
+  overview: {
+    controlPlaneHealth: "healthy",
+    runtimeHealth: "degraded",
+    alertHealth: "degraded",
+    queueUtilization: [
+      { queueName: "prod-realtime", pendingDepth: 18, runningCount: 42, utilizationRatio: 0.82, slaTier: "gold" },
+      { queueName: "prod-batch", pendingDepth: 6, runningCount: 19, utilizationRatio: 0.56, slaTier: "silver" },
+      { queueName: "staging-sandbox", pendingDepth: 1, runningCount: 4, utilizationRatio: 0.21, slaTier: "bronze" },
+    ],
+    slaBreachCount24h: 3,
+    generatedAt: "2026-03-31T06:00:00.000Z",
+  },
+  runs: [
+    {
+      runId: "run_flk_prod_001",
+      engineType: "flink",
+      pipelineId: "pipe_realtime_reco",
+      queueName: "prod-realtime",
+      runStatus: "running",
+      slaTier: "gold",
+      owner: "streaming-team",
+      retryCount: 0,
+      checkpointLagMs: 2900,
+      stageProgress: null,
+      startTime: "2026-03-31T05:20:00.000Z",
+      endTime: null,
+      durationMs: null,
+      grafana: {
+        grafanaDashboardUid: "cn-runtime-overview",
+        grafanaPanelId: 16,
+        grafanaFrom: "now-1h",
+        grafanaTo: "now",
+        grafanaVars: { runId: "run_flk_prod_001", engineType: "flink" },
+      },
+    },
+    {
+      runId: "run_spk_batch_013",
+      engineType: "spark",
+      pipelineId: "pipe_nightly_feature",
+      queueName: "prod-batch",
+      runStatus: "failed",
+      slaTier: "silver",
+      owner: "feature-team",
+      retryCount: 2,
+      checkpointLagMs: null,
+      stageProgress: 0.72,
+      startTime: "2026-03-31T02:10:00.000Z",
+      endTime: "2026-03-31T02:39:00.000Z",
+      durationMs: 1_740_000,
+      grafana: {
+        grafanaDashboardUid: "cn-runtime-overview",
+        grafanaPanelId: 22,
+        grafanaFrom: "now-6h",
+        grafanaTo: "now",
+        grafanaVars: { runId: "run_spk_batch_013", engineType: "spark" },
+      },
+    },
+    {
+      runId: "run_spk_batch_014",
+      engineType: "spark",
+      pipelineId: "pipe_nightly_billing",
+      queueName: "prod-batch",
+      runStatus: "succeeded",
+      slaTier: "silver",
+      owner: "billing-team",
+      retryCount: 1,
+      checkpointLagMs: null,
+      stageProgress: 1,
+      startTime: "2026-03-31T00:40:00.000Z",
+      endTime: "2026-03-31T01:19:00.000Z",
+      durationMs: 2_340_000,
+      grafana: {
+        grafanaDashboardUid: "cn-runtime-overview",
+        grafanaPanelId: 19,
+        grafanaFrom: "now-8h",
+        grafanaTo: "now",
+        grafanaVars: { runId: "run_spk_batch_014", engineType: "spark" },
+      },
+    },
+  ],
+  runDetails: {},
+  alerts: [
+    {
+      alertId: "alert_prod_1001",
+      alertSeverity: "p1",
+      alertStatus: "open",
+      sourceType: "run",
+      sourceId: "run_spk_batch_013",
+      relatedRunId: "run_spk_batch_013",
+      relatedRunStatus: "failed",
+      summary: "Spark batch stage-3 OOM，连续重试后失败",
+      labels: { queue: "prod-batch", owner: "feature-team" },
+      triggeredAt: "2026-03-31T02:41:00.000Z",
+      ackedAt: null,
+      resolvedAt: null,
+      grafana: {
+        grafanaDashboardUid: "cn-alert-center",
+        grafanaPanelId: 6,
+        grafanaFrom: "now-6h",
+        grafanaTo: "now",
+        grafanaVars: { alertId: "alert_prod_1001", runId: "run_spk_batch_013" },
+      },
+    },
+    {
+      alertId: "alert_prod_1002",
+      alertSeverity: "p2",
+      alertStatus: "acked",
+      sourceType: "operator",
+      sourceId: "interviewplatform/default",
+      relatedRunId: null,
+      relatedRunStatus: "running",
+      summary: "Operator reconcile latency 连续 5 分钟超阈值",
+      labels: { component: "controller-runtime" },
+      triggeredAt: "2026-03-31T04:12:00.000Z",
+      ackedAt: "2026-03-31T04:19:00.000Z",
+      resolvedAt: null,
+      grafana: {
+        grafanaDashboardUid: "cn-alert-center",
+        grafanaPanelId: 11,
+        grafanaFrom: "now-3h",
+        grafanaTo: "now",
+        grafanaVars: { alertId: "alert_prod_1002" },
+      },
+    },
+    {
+      alertId: "alert_prod_1003",
+      alertSeverity: "p3",
+      alertStatus: "resolved",
+      sourceType: "infra",
+      sourceId: "k8s/nodepool",
+      relatedRunId: null,
+      relatedRunStatus: "running",
+      summary: "Node pool 短时 CPU 抖动已恢复",
+      labels: { cluster: "prod-cn", region: "ap-east-1" },
+      triggeredAt: "2026-03-30T23:01:00.000Z",
+      ackedAt: "2026-03-30T23:07:00.000Z",
+      resolvedAt: "2026-03-30T23:15:00.000Z",
+      grafana: {
+        grafanaDashboardUid: "cn-alert-center",
+        grafanaPanelId: 4,
+        grafanaFrom: "now-24h",
+        grafanaTo: "now",
+        grafanaVars: { alertId: "alert_prod_1003" },
+      },
+    },
+  ],
+};
+platformMockStore.runs.forEach((run) => {
+  platformMockStore.runDetails[run.runId] = {
+    ...run,
+    failureCode: run.runStatus === "failed" ? "SPARK_EXECUTOR_OOM" : null,
+    failureReason: run.runStatus === "failed" ? "executor memory exceeded request/limit" : null,
+    events: [
+      {
+        eventTime: run.startTime,
+        eventType: "run_started",
+        message: `${run.engineType.toUpperCase()} run started`,
+      },
+      {
+        eventTime: run.runStatus === "failed" ? run.endTime : "2026-03-31T06:08:00.000Z",
+        eventType: run.runStatus === "failed" ? "run_failed" : "checkpoint_updated",
+        message: run.runStatus === "failed" ? "job failed after retries" : "checkpoint lag back to baseline",
+      },
+    ],
+  };
+});
 
 function normalizeApiBaseUrl(rawValue) {
   if (typeof rawValue !== "string") {
@@ -56,6 +274,25 @@ function resolveApiBaseUrl() {
   persistApiBaseUrl(resolved);
 }
 
+function resolveGrafanaBaseUrl() {
+  const query = new URLSearchParams(window.location.search).get("grafanaBaseUrl");
+  const runtime = normalizeApiBaseUrl(window.__CLOUD_NATIVE_CONFIG__?.grafanaBaseUrl ?? "");
+  const resolved = query !== null ? normalizeApiBaseUrl(query) : runtime;
+  if (resolved.startsWith("/")) {
+    state.grafanaBaseUrl = `${window.location.origin}${resolved}`;
+    return;
+  }
+  state.grafanaBaseUrl = resolved;
+}
+
+function resolvePermissions() {
+  const runtimePermissions = window.__CLOUD_NATIVE_CONFIG__?.permissions ?? {};
+  state.permissions = {
+    canAckAlert: runtimePermissions.canAckAlert !== false,
+    canOpenGrafana: runtimePermissions.canOpenGrafana !== false,
+  };
+}
+
 function formatApiBaseUrl() {
   return state.apiBaseUrl || window.location.origin;
 }
@@ -63,6 +300,157 @@ function formatApiBaseUrl() {
 function buildCanonicalApiUrl(pathname = "") {
   return `${state.apiBaseUrl}${CANONICAL_API_BASE_PATH}${pathname}`;
 }
+
+function buildPlatformApiUrl(pathname = "", query = null) {
+  const queryString = query ? buildQueryString(query) : "";
+  const suffix = queryString ? `?${queryString}` : "";
+  return `${state.apiBaseUrl}${PLATFORM_API_BASE_PATH}${pathname}${suffix}`;
+}
+
+function getPlatformMockOverride() {
+  const value = new URLSearchParams(window.location.search).get("platformMock");
+  if (value === "1" || value === "on" || value === "true") {
+    return true;
+  }
+  if (value === "0" || value === "off" || value === "false") {
+    return false;
+  }
+  return null;
+}
+
+function shouldUsePlatformMockFallback(error) {
+  const override = getPlatformMockOverride();
+  if (override !== null) {
+    return override;
+  }
+  return error?.status === 404 || error?.status === 501 || error?.status === 503;
+}
+
+function cloneJsonValue(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function clearPlatformCache() {
+  platformResponseCache.clear();
+}
+
+async function withPlatformCache(cacheKey, loader) {
+  if (!cacheKey) {
+    return loader();
+  }
+
+  const cached = platformResponseCache.get(cacheKey);
+  if (cached && cached.expireAt > Date.now()) {
+    return cloneJsonValue(cached.value);
+  }
+
+  const value = await loader();
+  platformResponseCache.set(cacheKey, {
+    expireAt: Date.now() + PLATFORM_CACHE_TTL_MS,
+    value: cloneJsonValue(value),
+  });
+  return value;
+}
+
+async function callPlatformApi({ pathname, query = null, method = "GET", body = null, headers = {}, cacheKey, mockResolver }) {
+  if (getPlatformMockOverride() === true && typeof mockResolver === "function") {
+    state.platformMode = "mock";
+    return mockResolver();
+  }
+
+  return withPlatformCache(cacheKey, async () => {
+    try {
+      const response = await apiFetch(buildPlatformApiUrl(pathname, query), {
+        method,
+        body: body ? JSON.stringify(body) : null,
+        headers,
+      });
+      state.platformMode = "api";
+      return response;
+    } catch (error) {
+      if (typeof mockResolver === "function" && shouldUsePlatformMockFallback(error)) {
+        state.platformMode = "mock";
+        return mockResolver();
+      }
+      throw error;
+    }
+  });
+}
+
+const platformApi = {
+  getOverview() {
+    return callPlatformApi({
+      pathname: "/overview",
+      cacheKey: "overview",
+      mockResolver() {
+        return cloneJsonValue(platformMockStore.overview);
+      },
+    });
+  },
+  listRuns(rawQuery) {
+    const query = normalizeRunsQuery(rawQuery);
+    return callPlatformApi({
+      pathname: "/runs",
+      query,
+      cacheKey: `runs:${buildQueryString(query)}`,
+      mockResolver() {
+        return applyRunsFilter(cloneJsonValue(platformMockStore.runs), query);
+      },
+    });
+  },
+  getRunDetail(runId) {
+    return callPlatformApi({
+      pathname: `/runs/${runId}`,
+      cacheKey: `run:${runId}`,
+      mockResolver() {
+        const detail = platformMockStore.runDetails[runId];
+        if (!detail) {
+          const error = new Error("RUN_NOT_FOUND：运行实例不存在");
+          error.status = 404;
+          throw error;
+        }
+        return cloneJsonValue(detail);
+      },
+    });
+  },
+  listAlerts(rawQuery) {
+    const query = normalizeAlertsQuery(rawQuery);
+    return callPlatformApi({
+      pathname: "/alerts",
+      query,
+      cacheKey: `alerts:${buildQueryString(query)}`,
+      mockResolver() {
+        return applyAlertsFilter(cloneJsonValue(platformMockStore.alerts), query);
+      },
+    });
+  },
+  async ackAlert(alertId) {
+    const response = await callPlatformApi({
+      pathname: `/alerts/${alertId}/ack`,
+      method: "POST",
+      headers: {
+        "idempotency-key": `ack:${alertId}:${Date.now()}`,
+      },
+      cacheKey: null,
+      mockResolver() {
+        const index = platformMockStore.alerts.findIndex((item) => item.alertId === alertId);
+        if (index === -1) {
+          const error = new Error("ALERT_NOT_FOUND：告警不存在");
+          error.status = 404;
+          throw error;
+        }
+        const target = platformMockStore.alerts[index];
+        if (target.alertStatus === "open") {
+          target.alertStatus = "acked";
+          target.ackedAt = new Date().toISOString();
+        }
+        return { ok: true, alertId, alertStatus: target.alertStatus };
+      },
+    });
+    clearPlatformCache();
+    return response;
+  },
+};
 
 const interviewSessionApi = {
   createSession(payload) {
@@ -115,6 +503,25 @@ function getRoute() {
     return { name: "home" };
   }
 
+  if (parts[0] === "platform") {
+    if (parts.length === 1 || parts[1] === "overview") {
+      return { name: "platform-overview" };
+    }
+    if (parts[1] === "runs" && parts[2]) {
+      return {
+        name: "platform-run-detail",
+        runId: parts[2],
+      };
+    }
+    if (parts[1] === "runs") {
+      return { name: "platform-runs" };
+    }
+    if (parts[1] === "alerts") {
+      return { name: "platform-alerts" };
+    }
+    return { name: "invalid" };
+  }
+
   if (parts[0] === "session" && parts[1] === "invalid") {
     return { name: "invalid" };
   }
@@ -152,7 +559,10 @@ async function apiFetch(url, options = {}) {
   state.lastRequestId = data.requestId ?? response.headers.get("x-request-id") ?? null;
 
   if (!response.ok) {
-    throw new Error(`${data.errorCode ?? "REQUEST_FAILED"}：${data.message ?? "请求失败"}`);
+    const error = new Error(`${data.errorCode ?? "REQUEST_FAILED"}：${data.message ?? "请求失败"}`);
+    error.status = response.status;
+    error.errorCode = data.errorCode ?? "REQUEST_FAILED";
+    throw error;
   }
 
   return data;
@@ -196,6 +606,145 @@ function renderRequestCard() {
   `;
 }
 
+function bindNavigateButtons(root = document) {
+  root.querySelectorAll("[data-navigate]").forEach((element) => {
+    element.addEventListener("click", () => {
+      const pathname = element.getAttribute("data-navigate");
+      if (pathname) {
+        navigate(pathname);
+      }
+    });
+  });
+}
+
+function getRunsQueryFromLocation() {
+  const searchParams = new URLSearchParams(window.location.search);
+  return normalizeRunsQuery({
+    engineType: searchParams.get("engineType"),
+    runStatus: searchParams.get("runStatus"),
+    slaTier: searchParams.get("slaTier"),
+    queueName: searchParams.get("queueName"),
+    page: searchParams.get("page"),
+    pageSize: searchParams.get("pageSize"),
+  });
+}
+
+function getAlertsQueryFromLocation() {
+  const searchParams = new URLSearchParams(window.location.search);
+  return normalizeAlertsQuery({
+    alertSeverity: searchParams.get("alertSeverity"),
+    runStatus: searchParams.get("runStatus"),
+    page: searchParams.get("page"),
+    pageSize: searchParams.get("pageSize"),
+  });
+}
+
+function buildPathWithQuery(pathname, query) {
+  const queryString = buildQueryString(query);
+  return queryString ? `${pathname}?${queryString}` : pathname;
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) {
+    return String(value);
+  }
+  return date.toLocaleString();
+}
+
+function formatDuration(durationMs) {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return "-";
+  }
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
+function formatPercent(value) {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  return `${Math.round(value * 100)}%`;
+}
+
+function renderToneBadge(meta, fallbackText) {
+  const label = meta?.label ?? fallbackText;
+  const tone = meta?.tone ?? "neutral";
+  return `<span class="tone-badge tone-${tone}">${escapeHtml(label)}</span>`;
+}
+
+function renderRunStatusBadge(runStatus) {
+  return renderToneBadge(RUN_STATUS_META[runStatus], runStatus || "unknown");
+}
+
+function renderAlertStatusBadge(alertStatus) {
+  return renderToneBadge(ALERT_STATUS_META[alertStatus], alertStatus || "unknown");
+}
+
+function renderAlertSeverityBadge(alertSeverity) {
+  return renderToneBadge(ALERT_SEVERITY_META[alertSeverity], alertSeverity || "unknown");
+}
+
+function renderHealthBadge(status) {
+  return renderToneBadge(HEALTH_STATUS_META[status], status || "unknown");
+}
+
+function renderPlatformModeNotice() {
+  const modeText = state.platformMode === "mock" ? "Mock Fallback" : "Canonical API";
+  const extraHint =
+    state.platformMode === "mock"
+      ? "当前为 mock 模式，待 /api/v1/platform 可用后会自动切回。"
+      : "当前已连接 canonical platform API。";
+  return `
+    <section class="request-card">
+      <span class="badge">platformMode</span>
+      <div><code>${escapeHtml(modeText)}</code></div>
+      <p class="meta">${escapeHtml(extraHint)}</p>
+    </section>
+  `;
+}
+
+function renderPlatformNav(activeRoute) {
+  return `
+    <section class="platform-nav">
+      <button class="btn btn-secondary ${activeRoute === "platform-overview" ? "is-active" : ""}" data-navigate="/platform/overview">Overview</button>
+      <button class="btn btn-secondary ${activeRoute === "platform-runs" ? "is-active" : ""}" data-navigate="/platform/runs">Runs</button>
+      <button class="btn btn-secondary ${activeRoute === "platform-alerts" ? "is-active" : ""}" data-navigate="/platform/alerts">Alerts</button>
+      <button class="btn btn-secondary" data-navigate="/">返回面试链路</button>
+    </section>
+  `;
+}
+
+function renderAsyncState({ title, description, actionText = "重试", actionPathname = window.location.pathname + window.location.search }) {
+  return `
+    <section class="panel">
+      <h2>${escapeHtml(title)}</h2>
+      <p class="meta">${escapeHtml(description)}</p>
+      <div class="actions">
+        <button class="btn btn-primary" data-navigate="${escapeHtml(actionPathname)}">${escapeHtml(actionText)}</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderGrafanaButton(grafana) {
+  if (!state.permissions.canOpenGrafana) {
+    return `<button class="btn btn-secondary" disabled>Grafana（无权限）</button>`;
+  }
+
+  const href = buildGrafanaHref(state.grafanaBaseUrl, grafana);
+  if (!href) {
+    return `<button class="btn btn-secondary" disabled>Grafana（未配置）</button>`;
+  }
+
+  return `<a class="btn btn-secondary" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Grafana 深链</a>`;
+}
+
 function renderHome() {
   appElement.innerHTML = `
     <section class="layout">
@@ -223,11 +772,14 @@ function renderHome() {
         <p class="meta">默认同源接入当前 Host 的 canonical API（<code>npm run dev</code> 为 Go 主线）。仅在调试 fallback 时才需要 <code>?apiBaseUrl=http://127.0.0.1:3000</code>；传 <code>default</code> 恢复同源。</p>
         <div class="actions">
           <button id="start-session" class="btn btn-primary">创建演示会话</button>
+          <button class="btn btn-secondary" data-navigate="/platform/overview">进入平台总览骨架</button>
         </div>
       </section>
+      ${renderPlatformModeNotice()}
       ${renderRequestCard()}
     </section>
   `;
+  bindNavigateButtons();
 
   document.querySelector("#start-session")?.addEventListener("click", async () => {
     const button = document.querySelector("#start-session");
@@ -250,6 +802,567 @@ function renderHome() {
       alert(error.message);
     }
   });
+}
+
+async function renderPlatformOverview() {
+  appElement.innerHTML = `
+    <section class="layout">
+      ${renderPlatformNav("platform-overview")}
+      ${renderAsyncState({ title: "平台总览", description: "正在加载 overview..." })}
+      ${renderPlatformModeNotice()}
+      ${renderRequestCard()}
+    </section>
+  `;
+  bindNavigateButtons();
+
+  try {
+    const overview = await platformApi.getOverview();
+
+    appElement.innerHTML = `
+      <section class="layout">
+        ${renderPlatformNav("platform-overview")}
+        <section class="panel">
+          <h2>平台总览 / Overview</h2>
+          <p class="meta">聚合健康态、队列容量与 24h SLA 违约摘要。</p>
+          <div class="info-grid">
+            <div>
+              <strong>Control Plane</strong>
+              <p>${renderHealthBadge(overview.controlPlaneHealth)}</p>
+            </div>
+            <div>
+              <strong>Runtime</strong>
+              <p>${renderHealthBadge(overview.runtimeHealth)}</p>
+            </div>
+            <div>
+              <strong>Alerts</strong>
+              <p>${renderHealthBadge(overview.alertHealth)}</p>
+            </div>
+            <div>
+              <strong>SLA Breach 24h</strong>
+              <p class="meta">${escapeHtml(overview.slaBreachCount24h)}</p>
+            </div>
+          </div>
+          <h3>Queue Utilization</h3>
+          ${
+            overview.queueUtilization?.length
+              ? `
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Queue</th>
+                        <th>SLA Tier</th>
+                        <th>Pending</th>
+                        <th>Running</th>
+                        <th>Utilization</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${overview.queueUtilization
+                        .map(
+                          (item) => `
+                            <tr>
+                              <td>${escapeHtml(item.queueName)}</td>
+                              <td>${escapeHtml(item.slaTier)}</td>
+                              <td>${escapeHtml(item.pendingDepth)}</td>
+                              <td>${escapeHtml(item.runningCount)}</td>
+                              <td>${escapeHtml(formatPercent(item.utilizationRatio))}</td>
+                            </tr>
+                          `,
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>
+                </div>
+              `
+              : `<p class="meta">暂无队列数据。</p>`
+          }
+          <p class="meta">generatedAt：${escapeHtml(formatDateTime(overview.generatedAt))}</p>
+        </section>
+        ${renderPlatformModeNotice()}
+        ${renderRequestCard()}
+      </section>
+    `;
+    bindNavigateButtons();
+  } catch (error) {
+    appElement.innerHTML = `
+      <section class="layout">
+        ${renderPlatformNav("platform-overview")}
+        ${renderAsyncState({
+          title: "平台总览加载失败",
+          description: error.message,
+          actionText: "重试总览",
+          actionPathname: "/platform/overview",
+        })}
+        ${renderPlatformModeNotice()}
+        ${renderRequestCard()}
+      </section>
+    `;
+    bindNavigateButtons();
+  }
+}
+
+function renderRunsFilterForm(query) {
+  return `
+    <form id="runs-filter-form" class="filter-bar">
+      <label>
+        Engine
+        <select name="engineType">
+          <option value="">全部</option>
+          ${ENGINE_TYPE_VALUES.map(
+            (value) =>
+              `<option value="${value}" ${query.engineType === value ? "selected" : ""}>${value.toUpperCase()}</option>`,
+          ).join("")}
+        </select>
+      </label>
+      <label>
+        Status
+        <select name="runStatus">
+          <option value="">全部</option>
+          ${RUN_STATUS_VALUES.map(
+            (value) =>
+              `<option value="${value}" ${query.runStatus === value ? "selected" : ""}>${escapeHtml(
+                RUN_STATUS_META[value]?.label ?? value,
+              )}</option>`,
+          ).join("")}
+        </select>
+      </label>
+      <label>
+        SLA
+        <select name="slaTier">
+          <option value="">全部</option>
+          ${SLA_TIER_VALUES.map(
+            (value) =>
+              `<option value="${value}" ${query.slaTier === value ? "selected" : ""}>${value.toUpperCase()}</option>`,
+          ).join("")}
+        </select>
+      </label>
+      <label>
+        Queue
+        <input type="text" name="queueName" value="${escapeHtml(query.queueName)}" placeholder="prod-realtime" />
+      </label>
+      <label>
+        Page Size
+        <select name="pageSize">
+          ${[10, 20, 50, 100]
+            .map((value) => `<option value="${value}" ${query.pageSize === value ? "selected" : ""}>${value}</option>`)
+            .join("")}
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit">应用筛选</button>
+    </form>
+  `;
+}
+
+async function renderPlatformRuns() {
+  const query = getRunsQueryFromLocation();
+
+  appElement.innerHTML = `
+    <section class="layout">
+      ${renderPlatformNav("platform-runs")}
+      ${renderAsyncState({ title: "作业运行列表", description: "正在加载 runs..." })}
+      ${renderPlatformModeNotice()}
+      ${renderRequestCard()}
+    </section>
+  `;
+  bindNavigateButtons();
+
+  try {
+    const result = await platformApi.listRuns(query);
+    const totalPages = Math.max(1, Math.ceil((result.total ?? 0) / query.pageSize));
+    const safePage = Math.min(query.page, totalPages);
+
+    appElement.innerHTML = `
+      <section class="layout">
+        ${renderPlatformNav("platform-runs")}
+        <section class="panel">
+          <h2>作业运行页 / Runs</h2>
+          <p class="meta">按引擎、状态、SLA、队列过滤。点击 run 进入详情并可跳 Grafana。</p>
+          ${renderRunsFilterForm({ ...query, page: safePage })}
+          ${
+            result.items?.length
+              ? `
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Run</th>
+                        <th>Engine</th>
+                        <th>Status</th>
+                        <th>Queue</th>
+                        <th>SLA</th>
+                        <th>Owner</th>
+                        <th>Duration</th>
+                        <th>Ops</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${result.items
+                        .map(
+                          (item) => `
+                            <tr>
+                              <td><code>${escapeHtml(item.runId)}</code></td>
+                              <td>${escapeHtml(item.engineType)}</td>
+                              <td>${renderRunStatusBadge(item.runStatus)}</td>
+                              <td>${escapeHtml(item.queueName)}</td>
+                              <td>${escapeHtml(item.slaTier)}</td>
+                              <td>${escapeHtml(item.owner ?? "-")}</td>
+                              <td>${escapeHtml(formatDuration(item.durationMs))}</td>
+                              <td>
+                                <div class="inline-actions">
+                                  <button class="btn btn-secondary" data-navigate="/platform/runs/${escapeHtml(item.runId)}">详情</button>
+                                  ${renderGrafanaButton(item.grafana)}
+                                </div>
+                              </td>
+                            </tr>
+                          `,
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>
+                </div>
+              `
+              : `<p class="meta">暂无符合条件的运行记录。</p>`
+          }
+          <div class="pagination-bar">
+            <span class="meta">共 ${escapeHtml(result.total ?? 0)} 条，当前第 ${safePage}/${totalPages} 页</span>
+            <div class="inline-actions">
+              <button class="btn btn-secondary" data-runs-page="${safePage - 1}" ${safePage <= 1 ? "disabled" : ""}>上一页</button>
+              <button class="btn btn-secondary" data-runs-page="${safePage + 1}" ${safePage >= totalPages ? "disabled" : ""}>下一页</button>
+            </div>
+          </div>
+        </section>
+        ${renderPlatformModeNotice()}
+        ${renderRequestCard()}
+      </section>
+    `;
+    bindNavigateButtons();
+
+    const runsFilterForm = document.querySelector("#runs-filter-form");
+    runsFilterForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(runsFilterForm);
+      const nextQuery = normalizeRunsQuery({
+        engineType: formData.get("engineType"),
+        runStatus: formData.get("runStatus"),
+        slaTier: formData.get("slaTier"),
+        queueName: formData.get("queueName"),
+        page: 1,
+        pageSize: formData.get("pageSize"),
+      });
+      navigate(buildPathWithQuery("/platform/runs", nextQuery));
+    });
+
+    document.querySelectorAll("[data-runs-page]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const nextPage = Number.parseInt(button.getAttribute("data-runs-page"), 10);
+        const nextQuery = normalizeRunsQuery({
+          ...query,
+          page: nextPage,
+        });
+        navigate(buildPathWithQuery("/platform/runs", nextQuery));
+      });
+    });
+  } catch (error) {
+    appElement.innerHTML = `
+      <section class="layout">
+        ${renderPlatformNav("platform-runs")}
+        ${renderAsyncState({
+          title: "运行列表加载失败",
+          description: error.message,
+          actionText: "重试 runs",
+          actionPathname: buildPathWithQuery("/platform/runs", query),
+        })}
+        ${renderPlatformModeNotice()}
+        ${renderRequestCard()}
+      </section>
+    `;
+    bindNavigateButtons();
+  }
+}
+
+async function renderPlatformRunDetail(runId) {
+  appElement.innerHTML = `
+    <section class="layout">
+      ${renderPlatformNav("platform-runs")}
+      ${renderAsyncState({ title: "运行详情", description: "正在加载 run detail..." })}
+      ${renderPlatformModeNotice()}
+      ${renderRequestCard()}
+    </section>
+  `;
+  bindNavigateButtons();
+
+  try {
+    const detail = await platformApi.getRunDetail(runId);
+    appElement.innerHTML = `
+      <section class="layout">
+        ${renderPlatformNav("platform-runs")}
+        <section class="panel">
+          <h2>运行详情 / ${escapeHtml(detail.runId)}</h2>
+          <div class="info-grid">
+            <div><strong>Engine</strong><p class="meta">${escapeHtml(detail.engineType)}</p></div>
+            <div><strong>Status</strong><p>${renderRunStatusBadge(detail.runStatus)}</p></div>
+            <div><strong>Queue</strong><p class="meta">${escapeHtml(detail.queueName)}</p></div>
+            <div><strong>SLA</strong><p class="meta">${escapeHtml(detail.slaTier)}</p></div>
+            <div><strong>Start</strong><p class="meta">${escapeHtml(formatDateTime(detail.startTime))}</p></div>
+            <div><strong>End</strong><p class="meta">${escapeHtml(formatDateTime(detail.endTime))}</p></div>
+            <div><strong>Duration</strong><p class="meta">${escapeHtml(formatDuration(detail.durationMs))}</p></div>
+            <div><strong>Retry</strong><p class="meta">${escapeHtml(detail.retryCount ?? "-")}</p></div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-secondary" data-navigate="/platform/runs">返回列表</button>
+            ${renderGrafanaButton(detail.grafana)}
+          </div>
+          ${
+            detail.failureReason
+              ? `
+                <section class="summary-card">
+                  <h3>失败信息</h3>
+                  <p><strong>failureCode:</strong> <code>${escapeHtml(detail.failureCode ?? "-")}</code></p>
+                  <p>${escapeHtml(detail.failureReason)}</p>
+                </section>
+              `
+              : ""
+          }
+          <section class="summary-card">
+            <h3>运行事件时间线</h3>
+            ${
+              detail.events?.length
+                ? `
+                  <ul>
+                    ${detail.events
+                      .map(
+                        (event) => `
+                          <li>
+                            <strong>${escapeHtml(formatDateTime(event.eventTime))}</strong>
+                            <div>${escapeHtml(event.eventType)}：${escapeHtml(event.message)}</div>
+                          </li>
+                        `,
+                      )
+                      .join("")}
+                  </ul>
+                `
+                : "<p class='meta'>暂无事件。</p>"
+            }
+          </section>
+        </section>
+        ${renderPlatformModeNotice()}
+        ${renderRequestCard()}
+      </section>
+    `;
+    bindNavigateButtons();
+  } catch (error) {
+    appElement.innerHTML = `
+      <section class="layout">
+        ${renderPlatformNav("platform-runs")}
+        ${renderAsyncState({
+          title: "运行详情加载失败",
+          description: error.message,
+          actionText: "返回 runs",
+          actionPathname: "/platform/runs",
+        })}
+        ${renderPlatformModeNotice()}
+        ${renderRequestCard()}
+      </section>
+    `;
+    bindNavigateButtons();
+  }
+}
+
+function renderAlertsFilterForm(query) {
+  return `
+    <form id="alerts-filter-form" class="filter-bar">
+      <label>
+        Severity
+        <select name="alertSeverity">
+          <option value="">全部</option>
+          ${ALERT_SEVERITY_VALUES.map(
+            (value) =>
+              `<option value="${value}" ${query.alertSeverity === value ? "selected" : ""}>${value.toUpperCase()}</option>`,
+          ).join("")}
+        </select>
+      </label>
+      <label>
+        Related Run Status
+        <select name="runStatus">
+          <option value="">全部</option>
+          ${RUN_STATUS_VALUES.map(
+            (value) =>
+              `<option value="${value}" ${query.runStatus === value ? "selected" : ""}>${escapeHtml(
+                RUN_STATUS_META[value]?.label ?? value,
+              )}</option>`,
+          ).join("")}
+        </select>
+      </label>
+      <label>
+        Page Size
+        <select name="pageSize">
+          ${[10, 20, 50, 100]
+            .map((value) => `<option value="${value}" ${query.pageSize === value ? "selected" : ""}>${value}</option>`)
+            .join("")}
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit">应用筛选</button>
+    </form>
+  `;
+}
+
+async function renderPlatformAlerts() {
+  const query = getAlertsQueryFromLocation();
+
+  appElement.innerHTML = `
+    <section class="layout">
+      ${renderPlatformNav("platform-alerts")}
+      ${renderAsyncState({ title: "告警中心", description: "正在加载 alerts..." })}
+      ${renderPlatformModeNotice()}
+      ${renderRequestCard()}
+    </section>
+  `;
+  bindNavigateButtons();
+
+  try {
+    const result = await platformApi.listAlerts(query);
+    const totalPages = Math.max(1, Math.ceil((result.total ?? 0) / query.pageSize));
+    const safePage = Math.min(query.page, totalPages);
+
+    appElement.innerHTML = `
+      <section class="layout">
+        ${renderPlatformNav("platform-alerts")}
+        <section class="panel">
+          <h2>告警中心 / Alerts</h2>
+          <p class="meta">支持按告警等级与关联 run 状态筛选，并执行 ACK。</p>
+          ${renderAlertsFilterForm({ ...query, page: safePage })}
+          ${
+            result.items?.length
+              ? `
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Alert</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Source</th>
+                        <th>Summary</th>
+                        <th>Triggered</th>
+                        <th>Ops</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${result.items
+                        .map(
+                          (item) => `
+                            <tr>
+                              <td><code>${escapeHtml(item.alertId)}</code></td>
+                              <td>${renderAlertSeverityBadge(item.alertSeverity)}</td>
+                              <td>${renderAlertStatusBadge(item.alertStatus)}</td>
+                              <td>${escapeHtml(item.sourceType)} / ${escapeHtml(item.sourceId)}</td>
+                              <td>
+                                <div>${escapeHtml(item.summary)}</div>
+                                ${
+                                  item.relatedRunId
+                                    ? `<small class="muted">run: <code>${escapeHtml(item.relatedRunId)}</code></small>`
+                                    : ""
+                                }
+                              </td>
+                              <td>${escapeHtml(formatDateTime(item.triggeredAt))}</td>
+                              <td>
+                                <div class="inline-actions">
+                                  <button class="btn btn-secondary" data-ack-alert="${escapeHtml(item.alertId)}" ${
+                                    !state.permissions.canAckAlert || item.alertStatus !== "open" ? "disabled" : ""
+                                  }>
+                                    ${
+                                      !state.permissions.canAckAlert
+                                        ? "ACK（无权限）"
+                                        : item.alertStatus === "open"
+                                          ? "ACK"
+                                          : "已处理"
+                                    }
+                                  </button>
+                                  ${item.relatedRunId ? `<button class="btn btn-secondary" data-navigate="/platform/runs/${escapeHtml(item.relatedRunId)}">关联 Run</button>` : ""}
+                                  ${renderGrafanaButton(item.grafana)}
+                                </div>
+                              </td>
+                            </tr>
+                          `,
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>
+                </div>
+              `
+              : "<p class='meta'>暂无符合条件的告警。</p>"
+          }
+          <div class="pagination-bar">
+            <span class="meta">共 ${escapeHtml(result.total ?? 0)} 条，当前第 ${safePage}/${totalPages} 页</span>
+            <div class="inline-actions">
+              <button class="btn btn-secondary" data-alerts-page="${safePage - 1}" ${safePage <= 1 ? "disabled" : ""}>上一页</button>
+              <button class="btn btn-secondary" data-alerts-page="${safePage + 1}" ${safePage >= totalPages ? "disabled" : ""}>下一页</button>
+            </div>
+          </div>
+        </section>
+        ${renderPlatformModeNotice()}
+        ${renderRequestCard()}
+      </section>
+    `;
+    bindNavigateButtons();
+
+    const alertsFilterForm = document.querySelector("#alerts-filter-form");
+    alertsFilterForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(alertsFilterForm);
+      const nextQuery = normalizeAlertsQuery({
+        alertSeverity: formData.get("alertSeverity"),
+        runStatus: formData.get("runStatus"),
+        page: 1,
+        pageSize: formData.get("pageSize"),
+      });
+      navigate(buildPathWithQuery("/platform/alerts", nextQuery));
+    });
+
+    document.querySelectorAll("[data-alerts-page]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const nextPage = Number.parseInt(button.getAttribute("data-alerts-page"), 10);
+        const nextQuery = normalizeAlertsQuery({
+          ...query,
+          page: nextPage,
+        });
+        navigate(buildPathWithQuery("/platform/alerts", nextQuery));
+      });
+    });
+
+    document.querySelectorAll("[data-ack-alert]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const alertId = button.getAttribute("data-ack-alert");
+        if (!alertId) {
+          return;
+        }
+        button.disabled = true;
+        try {
+          await platformApi.ackAlert(alertId);
+          render();
+        } catch (error) {
+          button.disabled = false;
+          alert(error.message);
+        }
+      });
+    });
+  } catch (error) {
+    appElement.innerHTML = `
+      <section class="layout">
+        ${renderPlatformNav("platform-alerts")}
+        ${renderAsyncState({
+          title: "告警列表加载失败",
+          description: error.message,
+          actionText: "重试 alerts",
+          actionPathname: buildPathWithQuery("/platform/alerts", query),
+        })}
+        ${renderPlatformModeNotice()}
+        ${renderRequestCard()}
+      </section>
+    `;
+    bindNavigateButtons();
+  }
 }
 
 function renderStatusBanner(status, description) {
@@ -651,6 +1764,26 @@ async function render() {
       return;
     }
 
+    if (route.name === "platform-overview") {
+      await renderPlatformOverview();
+      return;
+    }
+
+    if (route.name === "platform-runs") {
+      await renderPlatformRuns();
+      return;
+    }
+
+    if (route.name === "platform-run-detail") {
+      await renderPlatformRunDetail(route.runId);
+      return;
+    }
+
+    if (route.name === "platform-alerts") {
+      await renderPlatformAlerts();
+      return;
+    }
+
     if (route.name === "launch") {
       await renderLaunch(route.sessionId);
       return;
@@ -684,5 +1817,7 @@ async function render() {
 }
 
 resolveApiBaseUrl();
+resolveGrafanaBaseUrl();
+resolvePermissions();
 window.addEventListener("popstate", render);
 render();

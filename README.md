@@ -17,6 +17,8 @@
 - `backend/docs/runbook.md`：运行与测试手册
 - `frontend/server.js`：Node fallback 演示入口（历史兜底，默认 `3001`）
 - `frontend/public/`：原生前端静态资源
+- `frontend/public/platform-utils.js`：平台页 query/枚举/Grafana 工具函数
+- `frontend/tests/platform-utils.test.mjs`：平台页基础单测
 - `data/demo-fixtures.json`：固定题目与结果摘要 seed 数据
 - `scripts/smoke.mjs`：主链路烟测脚本（保存 `requestId` + `traceId` + `eventId` 证据）
 - `evidence/2026-03-27-go/`：Go 后端本次真实请求响应证据
@@ -52,6 +54,11 @@ npm run dev
 3. **本地运行时覆盖（可选）**
    - 可通过 `window.__CLOUD_NATIVE_CONFIG__.apiBaseUrl` 或 `?apiBaseUrl=` 指向其他后端；
    - 传 `?apiBaseUrl=default` 可恢复同源行为。
+4. **平台页骨架（CLOA-95）**
+   - 访问 `/platform/overview`、`/platform/runs`、`/platform/alerts`；
+   - 默认优先调用 `/api/v1/platform/*` canonical DTO；
+   - 若接口未就绪，会自动使用 mock fallback（可用 `?platformMock=off` 关闭，`?platformMock=on` 强制开启）；
+   - Grafana 深链通过 `window.__CLOUD_NATIVE_CONFIG__.grafanaBaseUrl` 或 `?grafanaBaseUrl=` 注入。
 
 ## Canonical API（最小闭环）
 
@@ -80,6 +87,14 @@ CAPTURE_DIR=evidence/2026-03-27-go npm run smoke
 - `traceId`（body 与 header）
 - `eventId`（body 与 `x-event-id` header，适用于写路径）
 - 完整响应体
+
+## 前端单测
+
+```bash
+npm run test:frontend
+```
+
+当前覆盖：query 归一化、Grafana 深链拼装、mock 过滤分页。
 
 ## 事件 Envelope 与回放契约（CLOA-72）
 

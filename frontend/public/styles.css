@@ -18,7 +18,9 @@ body {
 }
 
 button,
-textarea {
+textarea,
+select,
+input {
   font: inherit;
 }
 
@@ -98,6 +100,10 @@ textarea {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
   border: none;
   border-radius: 999px;
   padding: 12px 18px;
@@ -123,6 +129,17 @@ textarea {
 .btn-secondary {
   background: #eef2ff;
   color: #334155;
+}
+
+.btn.is-active {
+  background: #dbe2ff;
+  color: #2f3ca1;
+}
+
+.platform-nav {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .status-banner {
@@ -234,6 +251,69 @@ textarea {
   padding-left: 20px;
 }
 
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.filter-bar label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  color: #344054;
+}
+
+.filter-bar input,
+.filter-bar select {
+  border-radius: 12px;
+  border: 1px solid rgba(20, 31, 58, 0.14);
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(20, 31, 58, 0.08);
+  border-radius: 16px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 840px;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(20, 31, 58, 0.08);
+  vertical-align: top;
+}
+
+.data-table th {
+  background: #f8faff;
+  color: #344054;
+  font-size: 13px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pagination-bar {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -243,6 +323,40 @@ textarea {
   color: #4453cc;
   font-size: 12px;
   font-weight: 700;
+}
+
+.tone-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.tone-success {
+  background: #ecfdf3;
+  color: #067647;
+  border-color: #abefc6;
+}
+
+.tone-warning {
+  background: #fffaeb;
+  color: #b54708;
+  border-color: #fedf89;
+}
+
+.tone-danger {
+  background: #fef3f2;
+  color: #b42318;
+  border-color: #fecdca;
+}
+
+.tone-neutral {
+  background: #f2f4f7;
+  color: #475467;
+  border-color: #d0d5dd;
 }
 
 @media (max-width: 860px) {
