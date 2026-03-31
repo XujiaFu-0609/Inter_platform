@@ -1,0 +1,21 @@
+{
+  "step": 5,
+  "method": "POST",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_002/answers",
+  "statusCode": 200,
+  "requestId": "req_1774590039165_1fa166",
+  "traceId": "trace_1774590039165_384d1bd4",
+  "eventId": "evt_24db3801523f6b5a",
+  "traceIdHeader": "trace_1774590039165_384d1bd4",
+  "eventIdHeader": "evt_24db3801523f6b5a",
+  "body": {
+    "answerId": "ans_44ec63d0",
+    "answerVersion": 1,
+    "eventId": "evt_24db3801523f6b5a",
+    "requestId": "req_1774590039165_1fa166",
+    "savedAt": "2026-03-27T05:40:39Z",
+    "sessionId": "sess_demo_20260327_002",
+    "status": "in_progress",
+    "traceId": "trace_1774590039165_384d1bd4"
+  }
+}

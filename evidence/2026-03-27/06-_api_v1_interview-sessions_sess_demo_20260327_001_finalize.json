@@ -1,0 +1,16 @@
+{
+  "step": 6,
+  "method": "POST",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_001/finalize",
+  "statusCode": 200,
+  "requestId": "req_1774582612407_9507bf",
+  "body": {
+    "requestId": "req_1774582612407_9507bf",
+    "sessionId": "sess_demo_20260327_001",
+    "status": "submitted",
+    "submittedAt": "2026-03-27T03:36:52.391Z",
+    "answeredCount": 1,
+    "totalCount": 3,
+    "resultAvailable": false
+  }
+}

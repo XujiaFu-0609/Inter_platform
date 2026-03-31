@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ai-infra-interview-platform
+description: AI Infra 面试平台 MVP Kubernetes 部署模板
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

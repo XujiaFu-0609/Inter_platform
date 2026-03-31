@@ -1,0 +1,10 @@
+
+> cloud-native-interview-mvp@0.1.0 smoke
+> node scripts/smoke.mjs
+
+{
+  "ok": true,
+  "sessionId": "sess_demo_20260327_001",
+  "requestId": "req_1774587286069_9e4986",
+  "traceId": "trace_1774587286069_5290f6ff"
+}

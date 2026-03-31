@@ -1,0 +1,158 @@
+{
+  "meta": {
+    "issueIdentifier": "CLOA-57",
+    "version": "v0.1",
+    "date": "2026-03-27",
+    "timezone": "Asia/Shanghai",
+    "purpose": "当日首版可演示版本固定样例数据"
+  },
+  "candidate": {
+    "candidateId": "cand_demo_001",
+    "name": "张一凡",
+    "targetRole": "AI Infra 调度工程师"
+  },
+  "interviewPlan": {
+    "interviewPlanId": "plan_aiinfra_mvp_001",
+    "positionId": "pos_aiinfra_scheduler_001",
+    "mode": "live_interview",
+    "plannedDurationMinutes": 60
+  },
+  "session": {
+    "sessionId": "sess_demo_20260327_001",
+    "status": "completed",
+    "resultAvailable": true,
+    "remainingResumeCount": 0,
+    "resumeDeadlineAt": "2026-03-27T10:45:00+08:00",
+    "timeline": [
+      {
+        "eventType": "create",
+        "status": "pending",
+        "occurredAt": "2026-03-27T10:00:00+08:00",
+        "requestId": "req_demo_create_001"
+      },
+      {
+        "eventType": "prepare",
+        "status": "preparing",
+        "occurredAt": "2026-03-27T10:00:05+08:00",
+        "requestId": "req_demo_prepare_001"
+      },
+      {
+        "eventType": "start",
+        "status": "in_progress",
+        "occurredAt": "2026-03-27T10:00:20+08:00",
+        "requestId": "req_demo_start_001"
+      },
+      {
+        "eventType": "finalize",
+        "status": "submitted",
+        "occurredAt": "2026-03-27T10:32:10+08:00",
+        "requestId": "req_demo_finalize_001"
+      },
+      {
+        "eventType": "evaluation_submit",
+        "status": "completed",
+        "occurredAt": "2026-03-27T10:36:00+08:00",
+        "requestId": "req_demo_summary_001"
+      }
+    ]
+  },
+  "questions": [
+    {
+      "questionId": "q_001",
+      "sequenceNo": 1,
+      "type": "system_design",
+      "stem": "设计一套 AI Infra 面试平台的 MVP 技术架构，说明前端、会话服务、题库、面评和对象存储之间的关系。",
+      "constraints": [
+        "需要支持题目展示、回答提交、结果摘要",
+        "MVP 优先保证接口和状态一致性"
+      ]
+    },
+    {
+      "questionId": "q_002",
+      "sequenceNo": 2,
+      "type": "troubleshooting",
+      "stem": "一个候选人会话对应的 Pod 长时间 Pending，请给出 Kubernetes 侧排障步骤和优先级。",
+      "constraints": [
+        "至少覆盖调度、资源、镜像、PVC 四类原因"
+      ]
+    },
+    {
+      "questionId": "q_003",
+      "sequenceNo": 3,
+      "type": "sql",
+      "stem": "写出统计近 7 天候选人各状态会话数量的 SQL 思路，并说明如何按岗位维度聚合。",
+      "constraints": [
+        "说明分组字段",
+        "说明时间过滤口径"
+      ]
+    }
+  ],
+  "answers": [
+    {
+      "answerId": "ans_001",
+      "questionId": "q_001",
+      "answerFormat": "markdown",
+      "answerVersion": 3,
+      "idempotencyKey": "idem_demo_answer_q001_v3",
+      "requestId": "req_demo_answer_001",
+      "answerContent": "建议采用候选人 Web + 面试官 Web + 模块化单体 API 的最小架构，通过 interview-sessions 统一管理状态、题目和结果摘要，并将附件落对象存储。"
+    },
+    {
+      "answerId": "ans_002",
+      "questionId": "q_002",
+      "answerFormat": "markdown",
+      "answerVersion": 2,
+      "idempotencyKey": "idem_demo_answer_q002_v2",
+      "requestId": "req_demo_answer_002",
+      "answerContent": "先看 Pod Events，再检查节点可调度性、资源配额、镜像拉取、PVC 绑定和污点容忍；最后确认调度器和 admission 配置。"
+    },
+    {
+      "answerId": "ans_003",
+      "questionId": "q_003",
+      "answerFormat": "markdown",
+      "answerVersion": 1,
+      "idempotencyKey": "idem_demo_answer_q003_v1",
+      "requestId": "req_demo_answer_003",
+      "answerContent": "按 session_date 和 position_id 做 group by，并统计 pending、in_progress、completed 等状态计数；时间条件用 created_at >= current_date - interval '7 day'。"
+    }
+  ],
+  "finalizeRequest": {
+    "sessionId": "sess_demo_20260327_001",
+    "finalizedAt": "2026-03-27T10:32:10+08:00",
+    "idempotencyKey": "idem_demo_finalize_001",
+    "requestId": "req_demo_finalize_001"
+  },
+  "resultSummary": {
+    "sessionId": "sess_demo_20260327_001",
+    "status": "completed",
+    "requestId": "req_demo_summary_001",
+    "summary": "候选人能够完整描述 MVP 服务边界与 Kubernetes 排障思路，系统设计表达清晰，SQL 聚合口径基本正确，适合进入下一轮。",
+    "hireRecommendation": "advance",
+    "riskTags": [
+      "需继续验证复杂系统设计深度"
+    ],
+    "dimensionScores": [
+      {
+        "dimension": "cloud_native",
+        "score": 4
+      },
+      {
+        "dimension": "system_design",
+        "score": 4
+      },
+      {
+        "dimension": "debugging",
+        "score": 5
+      },
+      {
+        "dimension": "communication",
+        "score": 4
+      }
+    ]
+  },
+  "requestIdLookupRule": {
+    "apiResponseField": "requestId",
+    "uiDisplayRequirement": "错误提示和结果页都应展示 requestId",
+    "qaEvidenceRequirement": "证据包记录 requestId 作为请求样例主键"
+  }
+}

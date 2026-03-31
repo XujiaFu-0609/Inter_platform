@@ -1,0 +1,46 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: ai-interview-mvp
+  namespace: ai-interview-mvp
+spec:
+  components:
+    - name: ai-interview-platform
+      type: helm
+      properties:
+        repoType: helm
+        url: oci://registry.example.com/cloud-native/charts
+        chart: ai-infra-interview-platform
+        version: 0.1.0
+        releaseName: ai-interview-mvp
+        values:
+          global:
+            hosts:
+              web: interview.localhost
+              api: api.interview.localhost
+              auth: auth.interview.localhost
+          ingress:
+            enabled: true
+            className: nginx
+          auth:
+            mode: embedded
+          web:
+            image:
+              repository: registry.example.com/cloud-native/ai-interview-web
+              tag: "0.1.0"
+          api:
+            image:
+              repository: registry.example.com/cloud-native/ai-interview-api
+              tag: "0.1.0"
+          postgres:
+            superuser:
+              password: change-me-postgres-root
+            app:
+              password: change-me-app-db
+            keycloak:
+              password: change-me-keycloak-db
+          minio:
+            rootPassword: change-me-minio-root
+          keycloak:
+            adminPassword: change-me-keycloak-admin
+            clientSecret: change-me-oidc-client-secret

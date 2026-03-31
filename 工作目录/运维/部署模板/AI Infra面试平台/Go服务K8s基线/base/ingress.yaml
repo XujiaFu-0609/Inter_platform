@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-interview-go-api
+  labels:
+    app.kubernetes.io/name: ai-interview-go-api
+    app.kubernetes.io/part-of: ai-interview-platform
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.interview.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-interview-go-api
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - api.interview.local
+      secretName: ai-interview-go-api-tls

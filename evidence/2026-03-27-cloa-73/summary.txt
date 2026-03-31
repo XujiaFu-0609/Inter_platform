@@ -1,0 +1,19 @@
+CLOA-73 render evidence
+generated_at=2026-03-27T13:03:18+0800
+
+files:
+helm-template-default.yaml
+helm-template-jetstream-baseline.yaml
+summary.txt
+
+key checks:
+- nats StatefulSet:
+576:kind: StatefulSet
+644:kind: StatefulSet
+712:kind: StatefulSet
+- JetStream bootstrap Job:
+986:  name: ai-infra-interview-platform-jetstream-bootstrap
+- PrometheusRule:
+885:kind: PrometheusRule
+- Dashboard ConfigMap:
+123:  name: ai-infra-interview-platform-event-pipeline-dashboard

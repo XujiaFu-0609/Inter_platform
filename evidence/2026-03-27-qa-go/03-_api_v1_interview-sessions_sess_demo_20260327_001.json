@@ -1,0 +1,49 @@
+{
+  "step": 3,
+  "method": "GET",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_001",
+  "statusCode": 200,
+  "requestId": "req_1774590038717_7877e3",
+  "traceId": "trace_1774590038717_30e5b72e",
+  "eventId": null,
+  "traceIdHeader": "trace_1774590038717_30e5b72e",
+  "eventIdHeader": null,
+  "body": {
+    "candidate": {
+      "candidateId": "cand_demo_001",
+      "name": "陈墨",
+      "targetRole": "AI Infra 调度工程师"
+    },
+    "candidateId": "cand_demo_001",
+    "interviewPlan": {
+      "interviewPlanId": "plan_aiinfra_mvp_001",
+      "title": "AI Infra 模拟面试（MVP）",
+      "mode": "live_interview",
+      "interviewerId": "interviewer_demo_001",
+      "interviewerName": "张弛",
+      "plannedDurationMinutes": 45,
+      "questionSetPolicyResolved": "fixed"
+    },
+    "interviewPlanId": "plan_aiinfra_mvp_001",
+    "mode": "live_interview",
+    "progress": {
+      "answeredCount": 0,
+      "totalCount": 3
+    },
+    "questionSetPolicyResolved": "fixed",
+    "remainingResumeCount": 1,
+    "requestId": "req_1774590038717_7877e3",
+    "resultAvailable": false,
+    "resumeDeadlineAt": null,
+    "sessionId": "sess_demo_20260327_001",
+    "status": "in_progress",
+    "timeline": {
+      "completedAt": null,
+      "createdAt": "2026-03-27T05:40:38Z",
+      "preparingAt": "2026-03-27T05:40:38Z",
+      "startedAt": "2026-03-27T05:40:38Z",
+      "submittedAt": null
+    },
+    "traceId": "trace_1774590038717_30e5b72e"
+  }
+}

@@ -1,0 +1,1064 @@
+---
+# Source: ai-infra-interview-platform/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-infra-interview-platform-postgres
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+type: Opaque
+stringData:
+  POSTGRES_SUPERUSER: "postgres"
+  POSTGRES_SUPERUSER_PASSWORD: "change-me-postgres-root"
+  APP_DB_NAME: "ai_interview"
+  APP_DB_USER: "ai_interview"
+  APP_DB_PASSWORD: "change-me-app-db"
+  KEYCLOAK_DB_NAME: "keycloak"
+  KEYCLOAK_DB_USER: "keycloak"
+  KEYCLOAK_DB_PASSWORD: "change-me-keycloak-db"
+---
+# Source: ai-infra-interview-platform/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-infra-interview-platform-minio
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: "minioadmin"
+  MINIO_ROOT_PASSWORD: "change-me-minio-root"
+---
+# Source: ai-infra-interview-platform/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-infra-interview-platform-oidc
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+type: Opaque
+stringData:
+  KEYCLOAK_ADMIN_USER: "admin"
+  KEYCLOAK_ADMIN_PASSWORD: "change-me-keycloak-admin"
+  OIDC_CLIENT_ID: "ai-interview-web"
+  OIDC_CLIENT_SECRET: "change-me-oidc-client-secret"
+---
+# Source: ai-infra-interview-platform/templates/configmaps.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-infra-interview-platform-postgres-init
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+data:
+  01-init-multiple-dbs.sh: |
+    #!/bin/bash
+    set -e
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
+      DO
+      \$\$
+      BEGIN
+         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${APP_DB_USER}') THEN
+            CREATE ROLE ${APP_DB_USER} LOGIN PASSWORD '${APP_DB_PASSWORD}';
+         END IF;
+         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${KEYCLOAK_DB_USER}') THEN
+            CREATE ROLE ${KEYCLOAK_DB_USER} LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD}';
+         END IF;
+      END
+      \$\$;
+      SELECT 'CREATE DATABASE ${APP_DB_NAME} OWNER ${APP_DB_USER}'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${APP_DB_NAME}')\gexec
+      SELECT 'CREATE DATABASE ${KEYCLOAK_DB_NAME} OWNER ${KEYCLOAK_DB_USER}'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${KEYCLOAK_DB_NAME}')\gexec
+    EOSQL
+---
+# Source: ai-infra-interview-platform/templates/configmaps.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-infra-interview-platform-app-env
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+data:
+  APP_DB_HOST: ai-infra-interview-platform-postgres
+  APP_DB_PORT: "5432"
+  APP_DB_NAME: "ai_interview"
+  APP_DB_USER: "ai_interview"
+  REDIS_URL: "redis://ai-infra-interview-platform-redis:6379/0"
+  NATS_URL: "nats://ai-infra-interview-platform-nats:4222"
+  NATS_AUDIT_STREAM: "AUDIT_EVENTS"
+  NATS_AUDIT_SUBJECT: "audit.events.>"
+  NATS_DLQ_STREAM_INTERVIEW: "DLQ_INTERVIEW"
+  NATS_DLQ_SUBJECT_INTERVIEW: "dlq.interview.>"
+  NATS_DLQ_STREAM_EVALUATION: "DLQ_EVALUATION"
+  NATS_DLQ_SUBJECT_EVALUATION: "dlq.evaluation.>"
+  NATS_DLQ_STREAM_AUDIT: "DLQ_AUDIT"
+  NATS_DLQ_SUBJECT_AUDIT: "dlq.audit.>"
+  S3_ENDPOINT: "http://ai-infra-interview-platform-minio:9000"
+  S3_BUCKET: "ai-interview-artifacts"
+  OIDC_ISSUER: "http://ai-infra-interview-platform-keycloak:8080/realms/ai-interview"
+  NEXT_PUBLIC_API_BASE_URL: "http://api.interview.localhost"
+  NEXT_PUBLIC_OIDC_ISSUER: "http://auth.interview.localhost/realms/ai-interview"
+  NEXT_PUBLIC_OIDC_CLIENT_ID: "ai-interview-web"
+---
+# Source: ai-infra-interview-platform/templates/event-pipeline-observability.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-infra-interview-platform-event-pipeline-dashboard
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+    grafana_dashboard: "1"
+data:
+  event-pipeline-health.json: |
+    {
+      "title": "CLOA Event Pipeline Health",
+      "schemaVersion": 39,
+      "version": 1,
+      "editable": true,
+      "time": { "from": "now-6h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "发布成功率（5m）",
+          "targets": [
+            {
+              "expr": "100 * sum(rate(cloa_event_publish_total{result=\\\"success\\\"}[5m])) / clamp_min(sum(rate(cloa_event_publish_total[5m])), 1)"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "消费延迟 P95（秒）",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(cloa_event_consume_latency_seconds_bucket[5m])) by (le))"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "DLQ 增速（条/分钟）",
+          "targets": [
+            {
+              "expr": "60 * sum(rate(cloa_event_dlq_messages_total[5m])) by (domain)"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "重试次数（5m）",
+          "targets": [
+            {
+              "expr": "sum(increase(cloa_event_retry_total[5m])) by (domain)"
+            }
+          ]
+        }
+      ]
+    }
+---
+# Source: ai-infra-interview-platform/templates/nats.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-infra-interview-platform-nats-config
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+data:
+  nats-server.conf: |
+    port: 4222
+    http_port: 8222
+    jetstream {
+      store_dir: "/data/jetstream"
+      max_file_store: "180GB"
+      max_memory_store: "4GB"
+    }
+    server_name: $POD_NAME
+    cluster {
+      name: "cloa-nats"
+      listen: "0.0.0.0:6222"
+      routes = [
+        "nats://ai-infra-interview-platform-nats-0.ai-infra-interview-platform-nats-headless.default.svc:6222",
+        "nats://ai-infra-interview-platform-nats-1.ai-infra-interview-platform-nats-headless.default.svc:6222",
+        "nats://ai-infra-interview-platform-nats-2.ai-infra-interview-platform-nats-headless.default.svc:6222"
+      ]
+    }
+---
+# Source: ai-infra-interview-platform/templates/api.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-infra-interview-platform-api
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/component: api
+---
+# Source: ai-infra-interview-platform/templates/keycloak.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-infra-interview-platform-keycloak
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/component: keycloak
+---
+# Source: ai-infra-interview-platform/templates/minio.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-infra-interview-platform-minio
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+  selector:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/component: minio
+---
+# Source: ai-infra-interview-platform/templates/nats.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-infra-interview-platform-nats
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ports:
+    - name: client
+      port: 4222
+      targetPort: client
+    - name: cluster
+      port: 6222
+      targetPort: cluster
+    - name: monitor
+      port: 8222
+      targetPort: monitor
+  selector:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/component: nats
+---
+# Source: ai-infra-interview-platform/templates/nats.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-infra-interview-platform-nats-headless
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: client
+      port: 4222
+      targetPort: client
+    - name: cluster
+      port: 6222
+      targetPort: cluster
+    - name: monitor
+      port: 8222
+      targetPort: monitor
+  selector:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/component: nats
+---
+# Source: ai-infra-interview-platform/templates/postgres.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-infra-interview-platform-postgres
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/component: postgres
+---
+# Source: ai-infra-interview-platform/templates/redis.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-infra-interview-platform-redis
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/component: redis
+---
+# Source: ai-infra-interview-platform/templates/web.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-infra-interview-platform-web
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/component: web
+---
+# Source: ai-infra-interview-platform/templates/api.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-infra-interview-platform-api
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-infra-interview-platform
+      app.kubernetes.io/instance: ai-interview-mvp
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-infra-interview-platform
+        app.kubernetes.io/instance: ai-interview-mvp
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: api
+          image: "registry.example.com/cloud-native/ai-interview-api:0.1.0"
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: ai-infra-interview-platform-app-env
+            - secretRef:
+                name: ai-infra-interview-platform-postgres
+            - secretRef:
+                name: ai-infra-interview-platform-oidc
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+# Source: ai-infra-interview-platform/templates/keycloak.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-infra-interview-platform-keycloak
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-infra-interview-platform
+      app.kubernetes.io/instance: ai-interview-mvp
+      app.kubernetes.io/component: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-infra-interview-platform
+        app.kubernetes.io/instance: ai-interview-mvp
+        app.kubernetes.io/component: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: "quay.io/keycloak/keycloak:26.1"
+          imagePullPolicy: IfNotPresent
+          args:
+            - start-dev
+            - --http-enabled=true
+            - --proxy-headers=xforwarded
+            - --hostname-strict=false
+          env:
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL_HOST
+              value: ai-infra-interview-platform-postgres
+            - name: KC_DB_URL_PORT
+              value: "5432"
+            - name: KC_DB_URL_DATABASE
+              value: "keycloak"
+            - name: KC_DB_USERNAME
+              value: "keycloak"
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: KEYCLOAK_DB_PASSWORD
+            - name: KEYCLOAK_ADMIN
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-oidc
+                  key: KEYCLOAK_ADMIN_USER
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-oidc
+                  key: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_HOSTNAME
+              value: "auth.interview.localhost"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /realms/master
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+# Source: ai-infra-interview-platform/templates/redis.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-infra-interview-platform-redis
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-infra-interview-platform
+      app.kubernetes.io/instance: ai-interview-mvp
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-infra-interview-platform
+        app.kubernetes.io/instance: ai-interview-mvp
+        app.kubernetes.io/component: redis
+    spec:
+      containers:
+        - name: redis
+          image: "redis:7.2"
+          imagePullPolicy: IfNotPresent
+          args: ["--save", "", "--appendonly", "no"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+# Source: ai-infra-interview-platform/templates/web.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-infra-interview-platform-web
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-infra-interview-platform
+      app.kubernetes.io/instance: ai-interview-mvp
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-infra-interview-platform
+        app.kubernetes.io/instance: ai-interview-mvp
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        - name: web
+          image: "registry.example.com/cloud-native/ai-interview-web:0.1.0"
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: ai-infra-interview-platform-app-env
+            - secretRef:
+                name: ai-infra-interview-platform-oidc
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+# Source: ai-infra-interview-platform/templates/minio.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ai-infra-interview-platform-minio
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: ai-infra-interview-platform-minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-infra-interview-platform
+      app.kubernetes.io/instance: ai-interview-mvp
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-infra-interview-platform
+        app.kubernetes.io/instance: ai-interview-mvp
+        app.kubernetes.io/component: minio
+    spec:
+      containers:
+        - name: minio
+          image: "minio/minio:latest"
+          imagePullPolicy: IfNotPresent
+          args:
+            - server
+            - /data
+            - --console-address
+            - :9001
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-minio
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-minio
+                  key: MINIO_ROOT_PASSWORD
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+          readinessProbe:
+            tcpSocket:
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: minio-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        
+        resources:
+          requests:
+            storage: 20Gi
+---
+# Source: ai-infra-interview-platform/templates/nats.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ai-infra-interview-platform-nats
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: ai-infra-interview-platform-nats-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-infra-interview-platform
+      app.kubernetes.io/instance: ai-interview-mvp
+      app.kubernetes.io/component: nats
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-infra-interview-platform
+        app.kubernetes.io/instance: ai-interview-mvp
+        app.kubernetes.io/component: nats
+    spec:
+      containers:
+        - name: nats
+          image: "nats:2.10"
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-c"
+            - "/etc/nats/nats-server.conf"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: client
+              containerPort: 4222
+            - name: cluster
+              containerPort: 6222
+            - name: monitor
+              containerPort: 8222
+          readinessProbe:
+            tcpSocket:
+              port: client
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: nats-config
+              mountPath: /etc/nats
+            - name: nats-data
+              mountPath: /data/jetstream
+      volumes:
+        - name: nats-config
+          configMap:
+            name: ai-infra-interview-platform-nats-config
+  volumeClaimTemplates:
+    - metadata:
+        name: nats-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        
+        resources:
+          requests:
+            storage: 200Gi
+---
+# Source: ai-infra-interview-platform/templates/postgres.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ai-infra-interview-platform-postgres
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: ai-infra-interview-platform-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-infra-interview-platform
+      app.kubernetes.io/instance: ai-interview-mvp
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-infra-interview-platform
+        app.kubernetes.io/instance: ai-interview-mvp
+        app.kubernetes.io/component: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: "postgres:16"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: POSTGRES_SUPERUSER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: POSTGRES_SUPERUSER_PASSWORD
+            - name: APP_DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: APP_DB_NAME
+            - name: APP_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: APP_DB_USER
+            - name: APP_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: APP_DB_PASSWORD
+            - name: KEYCLOAK_DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: KEYCLOAK_DB_NAME
+            - name: KEYCLOAK_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: KEYCLOAK_DB_USER
+            - name: KEYCLOAK_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-infra-interview-platform-postgres
+                  key: KEYCLOAK_DB_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: postgres-init
+          configMap:
+            name: ai-infra-interview-platform-postgres-init
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        
+        resources:
+          requests:
+            storage: 20Gi
+---
+# Source: ai-infra-interview-platform/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-infra-interview-platform-web
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: interview.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-infra-interview-platform-web
+                port:
+                  number: 80
+---
+# Source: ai-infra-interview-platform/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-infra-interview-platform-api
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.interview.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-infra-interview-platform-api
+                port:
+                  number: 8080
+---
+# Source: ai-infra-interview-platform/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-infra-interview-platform-auth
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: auth.interview.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-infra-interview-platform-keycloak
+                port:
+                  number: 8080
+---
+# Source: ai-infra-interview-platform/templates/event-pipeline-observability.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-infra-interview-platform-event-pipeline-alerts
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+spec:
+  groups:
+    - name: event-pipeline-health
+      rules:
+        - alert: EventPublishSuccessRateLowWarning
+          expr: |
+            (
+              100 * sum(rate(cloa_event_publish_total{result="success"}[5m]))
+              / clamp_min(sum(rate(cloa_event_publish_total[5m])), 1)
+            ) < 99
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "事件发布成功率低于 warning 阈值"
+            description: "5m 发布成功率低于 99%"
+        - alert: EventPublishSuccessRateLowCritical
+          expr: |
+            (
+              100 * sum(rate(cloa_event_publish_total{result="success"}[5m]))
+              / clamp_min(sum(rate(cloa_event_publish_total[5m])), 1)
+            ) < 95
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "事件发布成功率低于 critical 阈值"
+            description: "5m 发布成功率低于 95%"
+        - alert: EventConsumeLatencyP95HighWarning
+          expr: |
+            histogram_quantile(0.95, sum(rate(cloa_event_consume_latency_seconds_bucket[5m])) by (le))
+            > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "事件消费延迟 P95 超过 warning 阈值"
+            description: "消费延迟 P95 超过 2 秒"
+        - alert: EventConsumeLatencyP95HighCritical
+          expr: |
+            histogram_quantile(0.95, sum(rate(cloa_event_consume_latency_seconds_bucket[5m])) by (le))
+            > 5
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "事件消费延迟 P95 超过 critical 阈值"
+            description: "消费延迟 P95 超过 5 秒"
+        - alert: EventDlqGrowthHighWarning
+          expr: |
+            60 * sum(rate(cloa_event_dlq_messages_total[5m]))
+            > 30
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "DLQ 增速超过 warning 阈值"
+            description: "DLQ 增速超过 30 条/分钟"
+        - alert: EventDlqGrowthHighCritical
+          expr: |
+            60 * sum(rate(cloa_event_dlq_messages_total[5m]))
+            > 60
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "DLQ 增速超过 critical 阈值"
+            description: "DLQ 增速超过 60 条/分钟"
+        - alert: EventRetrySpikeWarning
+          expr: |
+            sum(increase(cloa_event_retry_total[5m]))
+            > 120
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "重试次数超过 warning 阈值"
+            description: "5 分钟重试次数超过 120"
+        - alert: EventRetrySpikeCritical
+          expr: |
+            sum(increase(cloa_event_retry_total[5m]))
+            > 300
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "重试次数超过 critical 阈值"
+            description: "5 分钟重试次数超过 300"
+---
+# Source: ai-infra-interview-platform/templates/nats.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ai-infra-interview-platform-jetstream-bootstrap
+  labels:
+    app.kubernetes.io/name: ai-infra-interview-platform
+    helm.sh/chart: ai-infra-interview-platform-0.1.0
+    app.kubernetes.io/instance: ai-interview-mvp
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-infra-interview-platform
+        app.kubernetes.io/instance: ai-interview-mvp
+        app.kubernetes.io/component: jetstream-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: nats-bootstrap
+          image: "natsio/nats-box:0.16.0"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              set -eu
+              NATS_URL="nats://ai-infra-interview-platform-nats:4222"
+              until nats -s "$NATS_URL" stream ls >/dev/null 2>&1; do
+                echo "waiting for nats server..."
+                sleep 2
+              done
+              upsert_stream() {
+                stream_name="$1"
+                subjects="$2"
+                retention="$3"
+                storage="$4"
+                max_age="$5"
+                max_bytes="$6"
+                replicas="$7"
+                if nats -s "$NATS_URL" stream info "$stream_name" >/dev/null 2>&1; then
+                  nats -s "$NATS_URL" stream update "$stream_name" \
+                    --subjects "$subjects" \
+                    --retention "$retention" \
+                    --storage "$storage" \
+                    --max-age "$max_age" \
+                    --max-bytes "$max_bytes" \
+                    --replicas "$replicas" \
+                    --discard old \
+                    --dupe-window 2m \
+                    --defaults
+                else
+                  nats -s "$NATS_URL" stream add "$stream_name" \
+                    --subjects "$subjects" \
+                    --retention "$retention" \
+                    --storage "$storage" \
+                    --max-age "$max_age" \
+                    --max-bytes "$max_bytes" \
+                    --replicas "$replicas" \
+                    --discard old \
+                    --dupe-window 2m \
+                    --defaults
+                fi
+              }
+              upsert_stream "AUDIT_EVENTS" "audit.events.>" "limits" "file" "168h" "120GB" "3"
+              upsert_stream "DLQ_INTERVIEW" "dlq.interview.>" "limits" "file" "336h" "20GB" "3"
+              upsert_stream "DLQ_EVALUATION" "dlq.evaluation.>" "limits" "file" "336h" "20GB" "3"
+              upsert_stream "DLQ_AUDIT" "dlq.audit.>" "limits" "file" "336h" "20GB" "3"

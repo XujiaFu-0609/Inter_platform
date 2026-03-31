@@ -2,7 +2,7 @@
 
 ## 1. 文档信息
 
-- 版本：v0.3（QA 修订版，待复审）
+- 版本：v0.3（QA 通过冻结基线）
 - 日期：2026-03-27
 - 对应任务：[CLOA-48](/CLOA/issues/CLOA-48)
 - 上游任务：[CLOA-39](/CLOA/issues/CLOA-39)
@@ -239,6 +239,14 @@
 5. `answers` 写入同时使用 `answerVersion` 做乐观并发控制，避免覆盖旧版本；
 6. `finalize`、`evaluations` 仅允许成功一次，重复提交走幂等回放，不再创建新终态记录。
 
+### 5.8 下游回写对齐结论（2026-03-27）
+
+1. [CLOA-50](/CLOA/issues/CLOA-50) 继续保留 `POST /api/v1/interview-sessions/{sessionId}/events` 作为状态迁移入口，但可接受事件仅限 `start|interrupt|resume|cancel`；原 `complete` 语义拆分为 [CLOA-52](/CLOA/issues/CLOA-52) 的 `finalize` 与 `evaluations`。
+2. [CLOA-51](/CLOA/issues/CLOA-51) 保持题目列表、下一题下发、题目接收确认三组接口挂载在 `/api/v1/interview-sessions/{sessionId}` 下，并要求题目下发仅在 `in_progress` 状态执行，响应保留稳定的 `sequenceNo` 以支撑前端展示与审计追溯。
+3. [CLOA-52](/CLOA/issues/CLOA-52) 的最终提交口径统一为 `POST /api/v1/interview-sessions/{sessionId}/finalize`，不再使用 `POST /answers/{answerId}/finalize`；结果读取统一落在 `GET /result-summary` 与 `GET /review-findings`。
+4. [CLOA-45](/CLOA/issues/CLOA-45) 的前端启动/恢复流转继续沿用 `pending|preparing|in_progress|interrupted|completed` 展示态，但需将候选人完成页入口与后端 `submitted` 中间态显式区分，避免前端将“待面评”误显示为最终完成。
+5. 当日演示链路 [CLOA-57](/CLOA/issues/CLOA-57) 以本节与第 5.1~5.7 节作为最小联调口径，所有请求日志必须透出 `requestId` / `TraceId` 便于问题定位。
+
 ## 6. 数据模型初稿
 
 ### 6.1 核心实体
@@ -335,8 +343,8 @@
 
 ## 10. 下一步动作
 
-1. 对齐并回写 [CLOA-45](/CLOA/issues/CLOA-45)、[CLOA-50](/CLOA/issues/CLOA-50)、[CLOA-51](/CLOA/issues/CLOA-51)、[CLOA-52](/CLOA/issues/CLOA-52) 的状态字典、路径命名、字段字典与幂等约定；
-2. 由 Backend Engineer 基于第 5 节与第 8.1.1 节输出 OpenAPI 草案；
-3. 由 Frontend Engineer 基于第 4 节落地前端状态机与恢复提示交互；
-4. 由 Product Lead 对齐验收口径与字段定义，确保 [CLOA-42](/CLOA/issues/CLOA-42) 节奏同步；
-5. 回写完成后重新发起 [CLOA-53](/CLOA/issues/CLOA-53) QA 复审。
+1. 以本版作为 [CLOA-53](/CLOA/issues/CLOA-53) QA 通过后的冻结基线，继续支撑 [CLOA-57](/CLOA/issues/CLOA-57) 当日可演示版本联调；
+2. 由 Backend Engineer 基于第 5 节、第 5.8 节与第 8.1.1 节输出 OpenAPI 草案，并补充 `requestId`/`TraceId` 检索链路；
+3. 由 Frontend Engineer 基于第 4 节与第 5.8 节校正启动页、进行页、结束页的状态映射，特别是 `submitted` 与 `completed` 的展示差异；
+4. 由 Product Lead 对齐验收口径、失败文案与结果摘要字段定义，确保 [CLOA-42](/CLOA/issues/CLOA-42) 与当日演示范围一致；
+5. 由 QA Lead 在后续抽检中优先校验状态字典、路径命名、幂等与 `requestId` 可追溯性四项高风险口径。

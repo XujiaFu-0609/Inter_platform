@@ -1,0 +1,83 @@
+{{- if and .Values.ingress.enabled .Values.web.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-web
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.webSecretName }}
+  tls:
+    - hosts:
+        - {{ .Values.global.hosts.web }}
+      secretName: {{ .Values.ingress.tls.webSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.global.hosts.web }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ai-interview.fullname" . }}-web
+                port:
+                  number: {{ .Values.web.servicePort }}
+---
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.api.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-api
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.apiSecretName }}
+  tls:
+    - hosts:
+        - {{ .Values.global.hosts.api }}
+      secretName: {{ .Values.ingress.tls.apiSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.global.hosts.api }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ai-interview.fullname" . }}-api
+                port:
+                  number: {{ .Values.api.servicePort }}
+---
+{{- end }}
+{{- if and .Values.ingress.enabled (eq .Values.auth.mode "embedded") .Values.keycloak.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-auth
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.authSecretName }}
+  tls:
+    - hosts:
+        - {{ .Values.global.hosts.auth }}
+      secretName: {{ .Values.ingress.tls.authSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.global.hosts.auth }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ai-interview.fullname" . }}-keycloak
+                port:
+                  number: {{ .Values.keycloak.servicePort }}
+{{- end }}

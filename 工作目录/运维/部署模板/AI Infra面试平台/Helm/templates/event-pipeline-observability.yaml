@@ -1,0 +1,159 @@
+{{- if .Values.observability.eventPipeline.enabled }}
+{{- if .Values.observability.eventPipeline.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-event-pipeline-dashboard
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  event-pipeline-health.json: |
+    {
+      "title": "CLOA Event Pipeline Health",
+      "schemaVersion": 39,
+      "version": 1,
+      "editable": true,
+      "time": { "from": "now-6h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "发布成功率（5m）",
+          "targets": [
+            {
+              "expr": "100 * sum(rate(cloa_event_publish_total{result=\\\"success\\\"}[5m])) / clamp_min(sum(rate(cloa_event_publish_total[5m])), 1)"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "消费延迟 P95（秒）",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(cloa_event_consume_latency_seconds_bucket[5m])) by (le))"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "DLQ 增速（条/分钟）",
+          "targets": [
+            {
+              "expr": "60 * sum(rate(cloa_event_dlq_messages_total[5m])) by (domain)"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "重试次数（5m）",
+          "targets": [
+            {
+              "expr": "sum(increase(cloa_event_retry_total[5m])) by (domain)"
+            }
+          ]
+        }
+      ]
+    }
+{{- end }}
+{{- if .Values.observability.eventPipeline.prometheusRule.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-event-pipeline-alerts
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: event-pipeline-health
+      rules:
+        - alert: EventPublishSuccessRateLowWarning
+          expr: |
+            (
+              100 * sum(rate(cloa_event_publish_total{result="success"}[5m]))
+              / clamp_min(sum(rate(cloa_event_publish_total[5m])), 1)
+            ) < {{ .Values.observability.eventPipeline.alerts.publishSuccessRate.warning }}
+          for: {{ .Values.observability.eventPipeline.alerts.publishSuccessRate.warningFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "事件发布成功率低于 warning 阈值"
+            description: "5m 发布成功率低于 {{ .Values.observability.eventPipeline.alerts.publishSuccessRate.warning }}%"
+        - alert: EventPublishSuccessRateLowCritical
+          expr: |
+            (
+              100 * sum(rate(cloa_event_publish_total{result="success"}[5m]))
+              / clamp_min(sum(rate(cloa_event_publish_total[5m])), 1)
+            ) < {{ .Values.observability.eventPipeline.alerts.publishSuccessRate.critical }}
+          for: {{ .Values.observability.eventPipeline.alerts.publishSuccessRate.criticalFor }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "事件发布成功率低于 critical 阈值"
+            description: "5m 发布成功率低于 {{ .Values.observability.eventPipeline.alerts.publishSuccessRate.critical }}%"
+        - alert: EventConsumeLatencyP95HighWarning
+          expr: |
+            histogram_quantile(0.95, sum(rate(cloa_event_consume_latency_seconds_bucket[5m])) by (le))
+            > {{ .Values.observability.eventPipeline.alerts.consumeLatencyP95Seconds.warning }}
+          for: {{ .Values.observability.eventPipeline.alerts.consumeLatencyP95Seconds.warningFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "事件消费延迟 P95 超过 warning 阈值"
+            description: "消费延迟 P95 超过 {{ .Values.observability.eventPipeline.alerts.consumeLatencyP95Seconds.warning }} 秒"
+        - alert: EventConsumeLatencyP95HighCritical
+          expr: |
+            histogram_quantile(0.95, sum(rate(cloa_event_consume_latency_seconds_bucket[5m])) by (le))
+            > {{ .Values.observability.eventPipeline.alerts.consumeLatencyP95Seconds.critical }}
+          for: {{ .Values.observability.eventPipeline.alerts.consumeLatencyP95Seconds.criticalFor }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "事件消费延迟 P95 超过 critical 阈值"
+            description: "消费延迟 P95 超过 {{ .Values.observability.eventPipeline.alerts.consumeLatencyP95Seconds.critical }} 秒"
+        - alert: EventDlqGrowthHighWarning
+          expr: |
+            60 * sum(rate(cloa_event_dlq_messages_total[5m]))
+            > {{ .Values.observability.eventPipeline.alerts.dlqGrowthPerMinute.warning }}
+          for: {{ .Values.observability.eventPipeline.alerts.dlqGrowthPerMinute.warningFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "DLQ 增速超过 warning 阈值"
+            description: "DLQ 增速超过 {{ .Values.observability.eventPipeline.alerts.dlqGrowthPerMinute.warning }} 条/分钟"
+        - alert: EventDlqGrowthHighCritical
+          expr: |
+            60 * sum(rate(cloa_event_dlq_messages_total[5m]))
+            > {{ .Values.observability.eventPipeline.alerts.dlqGrowthPerMinute.critical }}
+          for: {{ .Values.observability.eventPipeline.alerts.dlqGrowthPerMinute.criticalFor }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "DLQ 增速超过 critical 阈值"
+            description: "DLQ 增速超过 {{ .Values.observability.eventPipeline.alerts.dlqGrowthPerMinute.critical }} 条/分钟"
+        - alert: EventRetrySpikeWarning
+          expr: |
+            sum(increase(cloa_event_retry_total[5m]))
+            > {{ .Values.observability.eventPipeline.alerts.retryCount5m.warning }}
+          for: {{ .Values.observability.eventPipeline.alerts.retryCount5m.warningFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "重试次数超过 warning 阈值"
+            description: "5 分钟重试次数超过 {{ .Values.observability.eventPipeline.alerts.retryCount5m.warning }}"
+        - alert: EventRetrySpikeCritical
+          expr: |
+            sum(increase(cloa_event_retry_total[5m]))
+            > {{ .Values.observability.eventPipeline.alerts.retryCount5m.critical }}
+          for: {{ .Values.observability.eventPipeline.alerts.retryCount5m.criticalFor }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "重试次数超过 critical 阈值"
+            description: "5 分钟重试次数超过 {{ .Values.observability.eventPipeline.alerts.retryCount5m.critical }}"
+{{- end }}
+{{- end }}

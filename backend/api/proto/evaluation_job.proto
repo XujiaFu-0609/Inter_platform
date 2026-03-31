@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package interview.v1;
+
+option go_package = "cloudnative/backend/api/proto/interviewv1";
+
+service EvaluationJobService {
+  rpc SubmitEvaluationJob(SubmitEvaluationJobRequest) returns (SubmitEvaluationJobResponse);
+  rpc GetEvaluationJob(GetEvaluationJobRequest) returns (GetEvaluationJobResponse);
+}
+
+message SubmitEvaluationJobRequest {
+  string session_id = 1;
+  string event_id = 2;
+  string trace_id = 3;
+}
+
+message SubmitEvaluationJobResponse {
+  string job_id = 1;
+  string status = 2;
+}
+
+message GetEvaluationJobRequest {
+  string job_id = 1;
+}
+
+message GetEvaluationJobResponse {
+  string job_id = 1;
+  string status = 2;
+  string updated_at = 3;
+}
+

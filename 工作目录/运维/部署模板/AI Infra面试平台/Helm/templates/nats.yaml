@@ -1,0 +1,224 @@
+{{- if .Values.nats.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-nats
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: client
+      port: {{ .Values.nats.servicePort }}
+      targetPort: client
+    - name: cluster
+      port: {{ .Values.nats.cluster.port }}
+      targetPort: cluster
+    - name: monitor
+      port: {{ .Values.nats.monitorPort }}
+      targetPort: monitor
+  selector:
+    {{- include "ai-interview.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-nats-headless
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: client
+      port: {{ .Values.nats.servicePort }}
+      targetPort: client
+    - name: cluster
+      port: {{ .Values.nats.cluster.port }}
+      targetPort: cluster
+    - name: monitor
+      port: {{ .Values.nats.monitorPort }}
+      targetPort: monitor
+  selector:
+    {{- include "ai-interview.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-nats-config
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+data:
+  nats-server.conf: |
+    port: {{ .Values.nats.servicePort }}
+    http_port: {{ .Values.nats.monitorPort }}
+    jetstream {
+      store_dir: "{{ .Values.nats.jetstream.storeDir }}"
+      max_file_store: "{{ .Values.nats.jetstream.maxFileStore }}"
+      max_memory_store: "{{ .Values.nats.jetstream.maxMemoryStore }}"
+    }
+    {{- if gt (int .Values.nats.replicas) 1 }}
+    server_name: $POD_NAME
+    cluster {
+      name: "{{ .Values.nats.cluster.name }}"
+      listen: "0.0.0.0:{{ .Values.nats.cluster.port }}"
+      routes = [
+        {{- $fullName := include "ai-interview.fullname" . -}}
+        {{- $headless := printf "%s-nats-headless" $fullName -}}
+        {{- $namespace := .Release.Namespace -}}
+        {{- $clusterPort := .Values.nats.cluster.port -}}
+        {{- range $index, $_ := until (int .Values.nats.replicas) }}
+        "nats://{{ $fullName }}-nats-{{ $index }}.{{ $headless }}.{{ $namespace }}.svc:{{ $clusterPort }}"{{ if lt $index (sub (int $.Values.nats.replicas) 1) }},{{ end }}
+        {{- end }}
+      ]
+    }
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-nats
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "ai-interview.fullname" . }}-nats-headless
+  replicas: {{ .Values.nats.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ai-interview.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nats
+  template:
+    metadata:
+      labels:
+        {{- include "ai-interview.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nats
+    spec:
+      containers:
+        - name: nats
+          image: "{{ .Values.nats.image.repository }}:{{ .Values.nats.image.tag }}"
+          imagePullPolicy: {{ .Values.nats.image.pullPolicy }}
+          args:
+            - "-c"
+            - "/etc/nats/nats-server.conf"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: client
+              containerPort: {{ .Values.nats.servicePort }}
+            - name: cluster
+              containerPort: {{ .Values.nats.cluster.port }}
+            - name: monitor
+              containerPort: {{ .Values.nats.monitorPort }}
+          readinessProbe:
+            tcpSocket:
+              port: client
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: nats-config
+              mountPath: /etc/nats
+            - name: nats-data
+              mountPath: {{ .Values.nats.jetstream.storeDir }}
+          {{- with .Values.nats.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: nats-config
+          configMap:
+            name: {{ include "ai-interview.fullname" . }}-nats-config
+        {{- if not .Values.nats.persistence.enabled }}
+        - name: nats-data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.nats.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: nats-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.nats.persistence.storageClassName }}
+        storageClassName: {{ .Values.nats.persistence.storageClassName | quote }}
+        {{- else }}
+        {{- include "ai-interview.storageClassName" . | nindent 8 }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.nats.persistence.size }}
+  {{- end }}
+{{- if .Values.nats.jetstream.bootstrap.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-jetstream-bootstrap
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "ai-interview.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: jetstream-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: nats-bootstrap
+          image: "{{ .Values.nats.jetstream.bootstrap.image.repository }}:{{ .Values.nats.jetstream.bootstrap.image.tag }}"
+          imagePullPolicy: {{ .Values.nats.jetstream.bootstrap.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              set -eu
+              NATS_URL="nats://{{ include "ai-interview.fullname" . }}-nats:{{ .Values.nats.servicePort }}"
+              until nats -s "$NATS_URL" stream ls >/dev/null 2>&1; do
+                echo "waiting for nats server..."
+                sleep 2
+              done
+              upsert_stream() {
+                stream_name="$1"
+                subjects="$2"
+                retention="$3"
+                storage="$4"
+                max_age="$5"
+                max_bytes="$6"
+                replicas="$7"
+                if nats -s "$NATS_URL" stream info "$stream_name" >/dev/null 2>&1; then
+                  nats -s "$NATS_URL" stream update "$stream_name" \
+                    --subjects "$subjects" \
+                    --retention "$retention" \
+                    --storage "$storage" \
+                    --max-age "$max_age" \
+                    --max-bytes "$max_bytes" \
+                    --replicas "$replicas" \
+                    --discard old \
+                    --dupe-window 2m \
+                    --defaults
+                else
+                  nats -s "$NATS_URL" stream add "$stream_name" \
+                    --subjects "$subjects" \
+                    --retention "$retention" \
+                    --storage "$storage" \
+                    --max-age "$max_age" \
+                    --max-bytes "$max_bytes" \
+                    --replicas "$replicas" \
+                    --discard old \
+                    --dupe-window 2m \
+                    --defaults
+                fi
+              }
+              upsert_stream "{{ .Values.nats.jetstream.streams.audit.name }}" "{{ join "," .Values.nats.jetstream.streams.audit.subjects }}" "{{ .Values.nats.jetstream.streams.audit.retention }}" "{{ .Values.nats.jetstream.streams.audit.storage }}" "{{ .Values.nats.jetstream.streams.audit.maxAge }}" "{{ .Values.nats.jetstream.streams.audit.maxBytes }}" "{{ min (int .Values.nats.replicas) (int .Values.nats.jetstream.streams.audit.replicas) }}"
+              upsert_stream "{{ .Values.nats.jetstream.streams.dlqInterview.name }}" "{{ join "," .Values.nats.jetstream.streams.dlqInterview.subjects }}" "{{ .Values.nats.jetstream.streams.dlqInterview.retention }}" "{{ .Values.nats.jetstream.streams.dlqInterview.storage }}" "{{ .Values.nats.jetstream.streams.dlqInterview.maxAge }}" "{{ .Values.nats.jetstream.streams.dlqInterview.maxBytes }}" "{{ min (int .Values.nats.replicas) (int .Values.nats.jetstream.streams.dlqInterview.replicas) }}"
+              upsert_stream "{{ .Values.nats.jetstream.streams.dlqEvaluation.name }}" "{{ join "," .Values.nats.jetstream.streams.dlqEvaluation.subjects }}" "{{ .Values.nats.jetstream.streams.dlqEvaluation.retention }}" "{{ .Values.nats.jetstream.streams.dlqEvaluation.storage }}" "{{ .Values.nats.jetstream.streams.dlqEvaluation.maxAge }}" "{{ .Values.nats.jetstream.streams.dlqEvaluation.maxBytes }}" "{{ min (int .Values.nats.replicas) (int .Values.nats.jetstream.streams.dlqEvaluation.replicas) }}"
+              upsert_stream "{{ .Values.nats.jetstream.streams.dlqAudit.name }}" "{{ join "," .Values.nats.jetstream.streams.dlqAudit.subjects }}" "{{ .Values.nats.jetstream.streams.dlqAudit.retention }}" "{{ .Values.nats.jetstream.streams.dlqAudit.storage }}" "{{ .Values.nats.jetstream.streams.dlqAudit.maxAge }}" "{{ .Values.nats.jetstream.streams.dlqAudit.maxBytes }}" "{{ min (int .Values.nats.replicas) (int .Values.nats.jetstream.streams.dlqAudit.replicas) }}"
+{{- end }}
+{{- end }}

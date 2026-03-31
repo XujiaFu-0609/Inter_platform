@@ -1,0 +1,50 @@
+{
+  "step": 4,
+  "method": "GET",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_001/questions",
+  "statusCode": 200,
+  "requestId": "req_1774590038755_310808",
+  "traceId": "trace_1774590038755_e55dabd1",
+  "eventId": null,
+  "traceIdHeader": "trace_1774590038755_e55dabd1",
+  "eventIdHeader": null,
+  "body": {
+    "questions": [
+      {
+        "questionId": "q_001",
+        "sequenceNo": 1,
+        "type": "system_design",
+        "title": "设计最小 AI Infra 面试平台架构",
+        "stem": "请设计一套支持候选人启动、答题、提交与结果查看的最小 AI Infra 面试平台，并说明核心服务边界。",
+        "constraints": [
+          "至少说明网关、会话编排、题库、面评四个组件",
+          "说明 requestId 用于排障的链路位置"
+        ]
+      },
+      {
+        "questionId": "q_002",
+        "sequenceNo": 2,
+        "type": "troubleshooting",
+        "title": "Kubernetes Pending 排障",
+        "stem": "给定一批 Pod 长时间 Pending，请说明你的排障顺序、关键指标与可能的根因。",
+        "constraints": [
+          "至少覆盖调度、资源、镜像、节点状态四类检查项"
+        ]
+      },
+      {
+        "questionId": "q_003",
+        "sequenceNo": 3,
+        "type": "sql_analysis",
+        "title": "会话质量分析 SQL 思路",
+        "stem": "如果要统计每位候选人在各维度分数与题目通过率，请说明你的 SQL 聚合思路。",
+        "constraints": [
+          "说明事实表、维度表与时间窗口处理"
+        ]
+      }
+    ],
+    "requestId": "req_1774590038755_310808",
+    "sessionId": "sess_demo_20260327_001",
+    "status": "in_progress",
+    "traceId": "trace_1774590038755_e55dabd1"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "step": 7,
+  "method": "POST",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_002/evaluations",
+  "statusCode": 200,
+  "requestId": "req_1774584933934_9b6fee",
+  "traceId": "trace_1774584933934_fd940805",
+  "traceIdHeader": "trace_1774584933934_fd940805",
+  "body": {
+    "completedAt": "2026-03-27T04:15:33Z",
+    "evaluationId": "eval_sess_demo_20260327_002",
+    "requestId": "req_1774584933934_9b6fee",
+    "sessionId": "sess_demo_20260327_002",
+    "status": "completed",
+    "traceId": "trace_1774584933934_fd940805"
+  }
+}

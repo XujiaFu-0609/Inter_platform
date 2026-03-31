@@ -1,0 +1,15 @@
+{
+  "step": 5,
+  "method": "POST",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_001/answers",
+  "statusCode": 200,
+  "requestId": "req_1774582612348_124eec",
+  "body": {
+    "requestId": "req_1774582612348_124eec",
+    "sessionId": "sess_demo_20260327_001",
+    "status": "in_progress",
+    "answerId": "ans_26f9cfc9",
+    "answerVersion": 1,
+    "savedAt": "2026-03-27T03:36:52.349Z"
+  }
+}

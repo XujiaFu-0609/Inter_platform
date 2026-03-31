@@ -1,0 +1,81 @@
+{{- if and .Values.keycloak.enabled (eq .Values.auth.mode "embedded") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-keycloak
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: http
+      port: {{ .Values.keycloak.servicePort }}
+      targetPort: http
+  selector:
+    {{- include "ai-interview.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-keycloak
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.keycloak.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ai-interview.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: keycloak
+  template:
+    metadata:
+      labels:
+        {{- include "ai-interview.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}"
+          imagePullPolicy: {{ .Values.keycloak.image.pullPolicy }}
+          args:
+            - start-dev
+            - --http-enabled=true
+            - --proxy-headers=xforwarded
+            - --hostname-strict=false
+          env:
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL_HOST
+              value: {{ include "ai-interview.fullname" . }}-postgres
+            - name: KC_DB_URL_PORT
+              value: {{ .Values.postgres.servicePort | quote }}
+            - name: KC_DB_URL_DATABASE
+              value: {{ .Values.postgres.keycloak.database | quote }}
+            - name: KC_DB_USERNAME
+              value: {{ .Values.postgres.keycloak.username | quote }}
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-interview.fullname" . }}-postgres
+                  key: KEYCLOAK_DB_PASSWORD
+            - name: KEYCLOAK_ADMIN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-interview.fullname" . }}-oidc
+                  key: KEYCLOAK_ADMIN_USER
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-interview.fullname" . }}-oidc
+                  key: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_HOSTNAME
+              value: {{ .Values.global.hosts.auth | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /realms/master
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+{{- end }}

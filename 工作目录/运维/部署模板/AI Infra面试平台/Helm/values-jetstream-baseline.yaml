@@ -1,0 +1,40 @@
+nats:
+  replicas: 3
+  persistence:
+    size: 200Gi
+  jetstream:
+    maxFileStore: 180GB
+    maxMemoryStore: 4GB
+    streams:
+      audit:
+        maxAge: 168h
+        maxBytes: 120GB
+        replicas: 3
+      dlqInterview:
+        maxAge: 336h
+        maxBytes: 20GB
+        replicas: 3
+      dlqEvaluation:
+        maxAge: 336h
+        maxBytes: 20GB
+        replicas: 3
+      dlqAudit:
+        maxAge: 336h
+        maxBytes: 20GB
+        replicas: 3
+
+observability:
+  eventPipeline:
+    alerts:
+      publishSuccessRate:
+        warning: 99
+        critical: 95
+      consumeLatencyP95Seconds:
+        warning: 2
+        critical: 5
+      dlqGrowthPerMinute:
+        warning: 30
+        critical: 60
+      retryCount5m:
+        warning: 120
+        critical: 300

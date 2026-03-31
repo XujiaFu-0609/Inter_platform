@@ -1,0 +1,154 @@
+openapi: 3.0.3
+info:
+  title: Interview API
+  version: v1
+servers:
+  - url: http://127.0.0.1:3000
+paths:
+  /api/v1/interview-sessions:
+    post:
+      summary: Create interview session
+      operationId: createInterviewSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/interview-sessions/{sessionId}:
+    get:
+      summary: Get session detail
+      operationId: getInterviewSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+  /api/v1/interview-sessions/{sessionId}/answers:
+    post:
+      summary: Save answer
+      operationId: saveInterviewAnswer
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveAnswerRequest"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveAnswerResponse"
+        "409":
+          description: Idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required: [candidateId, interviewPlanId, mode]
+      properties:
+        candidateId:
+          type: string
+        interviewPlanId:
+          type: string
+        mode:
+          type: string
+        entryToken:
+          type: string
+    SaveAnswerRequest:
+      type: object
+      required: [questionId, answerContent, idempotencyKey]
+      properties:
+        questionId:
+          type: string
+        answerContent:
+          type: string
+        answerFormat:
+          type: string
+        clientSavedAt:
+          type: string
+          format: date-time
+        idempotencyKey:
+          type: string
+    SessionResponse:
+      type: object
+      required: [requestId, traceId, sessionId, status]
+      properties:
+        requestId:
+          type: string
+        traceId:
+          type: string
+        eventId:
+          type: string
+        sessionId:
+          type: string
+        status:
+          type: string
+          enum: [pending, preparing, in_progress, submitted, completed]
+    SaveAnswerResponse:
+      type: object
+      required: [requestId, traceId, sessionId, answerId, answerVersion, eventId]
+      properties:
+        requestId:
+          type: string
+        traceId:
+          type: string
+        eventId:
+          type: string
+        sessionId:
+          type: string
+        answerId:
+          type: string
+        answerVersion:
+          type: integer
+        savedAt:
+          type: string
+          format: date-time
+        idempotentReplay:
+          type: boolean
+    ErrorResponse:
+      type: object
+      required: [requestId, traceId, errorCode, message]
+      properties:
+        requestId:
+          type: string
+        traceId:
+          type: string
+        errorCode:
+          type: string
+        message:
+          type: string
+

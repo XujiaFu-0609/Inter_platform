@@ -1,0 +1,18 @@
+{
+  "step": 5,
+  "method": "POST",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_001/answers",
+  "statusCode": 200,
+  "requestId": "req_1774587286066_619e8a",
+  "traceId": "trace_1774587286066_82a19551",
+  "traceIdHeader": "trace_1774587286066_82a19551",
+  "body": {
+    "answerId": "ans_e707f4a4",
+    "answerVersion": 1,
+    "requestId": "req_1774587286066_619e8a",
+    "savedAt": "2026-03-27T04:54:46Z",
+    "sessionId": "sess_demo_20260327_001",
+    "status": "in_progress",
+    "traceId": "trace_1774587286066_82a19551"
+  }
+}

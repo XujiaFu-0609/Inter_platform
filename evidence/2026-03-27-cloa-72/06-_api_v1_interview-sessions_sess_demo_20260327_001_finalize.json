@@ -1,0 +1,22 @@
+{
+  "step": 6,
+  "method": "POST",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_001/finalize",
+  "statusCode": 200,
+  "requestId": "req_1774588003187_4825a7",
+  "traceId": "trace_1774588003187_77178c00",
+  "eventId": "evt_8f6bf205075afb33",
+  "traceIdHeader": "trace_1774588003187_77178c00",
+  "eventIdHeader": "evt_8f6bf205075afb33",
+  "body": {
+    "answeredCount": 1,
+    "eventId": "evt_8f6bf205075afb33",
+    "requestId": "req_1774588003187_4825a7",
+    "resultAvailable": false,
+    "sessionId": "sess_demo_20260327_001",
+    "status": "submitted",
+    "submittedAt": "2026-03-27T05:06:43.186Z",
+    "totalCount": 3,
+    "traceId": "trace_1774588003187_77178c00"
+  }
+}

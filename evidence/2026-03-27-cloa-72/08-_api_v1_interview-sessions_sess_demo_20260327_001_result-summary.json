@@ -1,0 +1,47 @@
+{
+  "step": 8,
+  "method": "GET",
+  "url": "http://127.0.0.1:3000/api/v1/interview-sessions/sess_demo_20260327_001/result-summary",
+  "statusCode": 200,
+  "requestId": "req_1774588003190_2a9d7f",
+  "traceId": "trace_1774588003190_a466d6ae",
+  "eventId": null,
+  "traceIdHeader": "trace_1774588003190_a466d6ae",
+  "eventIdHeader": null,
+  "body": {
+    "dimensionScores": [
+      {
+        "dimension": "system_design",
+        "score": 4
+      },
+      {
+        "dimension": "kubernetes",
+        "score": 5
+      },
+      {
+        "dimension": "data_analysis",
+        "score": 4
+      }
+    ],
+    "findings": [
+      "对 requestId 贯穿链路的重要性表述清晰",
+      "对面评服务与题库服务的数据边界理解准确"
+    ],
+    "hireRecommendation": "advance",
+    "requestId": "req_1774588003190_2a9d7f",
+    "riskTags": [
+      "需要补充大规模多租户隔离经验"
+    ],
+    "sessionId": "sess_demo_20260327_001",
+    "status": "completed",
+    "summary": "候选人具备较强的云原生排障与架构拆解能力，系统设计表达完整，建议进入下一轮。",
+    "timeline": {
+      "completedAt": "2026-03-27T05:06:43Z",
+      "createdAt": "2026-03-27T05:06:43Z",
+      "preparingAt": "2026-03-27T05:06:43Z",
+      "startedAt": "2026-03-27T05:06:43Z",
+      "submittedAt": "2026-03-27T05:06:43.186Z"
+    },
+    "traceId": "trace_1774588003190_a466d6ae"
+  }
+}

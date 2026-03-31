@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-interview-go-api-config
+  labels:
+    app.kubernetes.io/name: ai-interview-go-api
+    app.kubernetes.io/part-of: ai-interview-platform
+data:
+  APP_ENV: "dev"
+  HTTP_PORT: "8080"
+  REQUEST_ID_HEADER: "X-Request-Id"
+  TRACE_ID_HEADER: "X-Trace-Id"
+  LOG_FORMAT: "json"
+  METRICS_ENABLED: "true"
+  METRICS_PATH: "/metrics"

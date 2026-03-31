@@ -1,0 +1,14 @@
+1. 检查核心 Pod：
+   kubectl get pods -n {{ .Release.Namespace }}
+
+2. 检查 Ingress：
+   kubectl get ingress -n {{ .Release.Namespace }}
+
+   如需本地直接访问（与 k8s-dashboard / volcano 相同）：
+   bash ./工作目录/运维/部署模板/AI Infra面试平台/start-local-ingress-access.sh
+
+3. 检查 PostgreSQL 服务：
+   kubectl get svc {{ include "ai-interview.fullname" . }}-postgres -n {{ .Release.Namespace }}
+
+4. 如使用内置认证，Keycloak 地址：
+   http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.global.hosts.auth }}

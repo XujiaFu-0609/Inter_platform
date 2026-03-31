@@ -1,0 +1,195 @@
+global:
+  storageClass: ""
+  imagePullSecrets: []
+  hosts:
+    web: interview.localhost
+    api: api.interview.localhost
+    auth: auth.interview.localhost
+
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    enabled: false
+    webSecretName: ""
+    apiSecretName: ""
+    authSecretName: ""
+
+auth:
+  mode: embedded
+  external:
+    issuer: ""
+    clientId: ""
+    clientSecret: ""
+
+web:
+  enabled: true
+  replicas: 2
+  image:
+    repository: registry.example.com/cloud-native/ai-interview-web
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  containerPort: 3000
+  servicePort: 80
+  resources: {}
+
+api:
+  enabled: true
+  replicas: 2
+  image:
+    repository: registry.example.com/cloud-native/ai-interview-api
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  containerPort: 8080
+  servicePort: 8080
+  resources: {}
+  extraEnv: []
+
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16"
+    pullPolicy: IfNotPresent
+  storageSize: 20Gi
+  servicePort: 5432
+  superuser:
+    username: postgres
+    password: change-me-postgres-root
+  app:
+    database: ai_interview
+    username: ai_interview
+    password: change-me-app-db
+  keycloak:
+    database: keycloak
+    username: keycloak
+    password: change-me-keycloak-db
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7.2"
+    pullPolicy: IfNotPresent
+  servicePort: 6379
+
+nats:
+  enabled: true
+  replicas: 1
+  image:
+    repository: nats
+    tag: "2.10"
+    pullPolicy: IfNotPresent
+  servicePort: 4222
+  monitorPort: 8222
+  cluster:
+    name: cloa-nats
+    port: 6222
+  persistence:
+    enabled: true
+    size: 30Gi
+    storageClassName: ""
+  resources: {}
+  jetstream:
+    storeDir: /data/jetstream
+    maxFileStore: 20GB
+    maxMemoryStore: 1GB
+    bootstrap:
+      enabled: true
+      image:
+        repository: natsio/nats-box
+        tag: "0.16.0"
+        pullPolicy: IfNotPresent
+    streams:
+      audit:
+        name: AUDIT_EVENTS
+        subjects:
+          - audit.events.>
+        retention: limits
+        storage: file
+        maxAge: 168h
+        maxBytes: 10GB
+        replicas: 3
+      dlqInterview:
+        name: DLQ_INTERVIEW
+        subjects:
+          - dlq.interview.>
+        retention: limits
+        storage: file
+        maxAge: 336h
+        maxBytes: 5GB
+        replicas: 3
+      dlqEvaluation:
+        name: DLQ_EVALUATION
+        subjects:
+          - dlq.evaluation.>
+        retention: limits
+        storage: file
+        maxAge: 336h
+        maxBytes: 5GB
+        replicas: 3
+      dlqAudit:
+        name: DLQ_AUDIT
+        subjects:
+          - dlq.audit.>
+        retention: limits
+        storage: file
+        maxAge: 336h
+        maxBytes: 5GB
+        replicas: 3
+
+minio:
+  enabled: true
+  image:
+    repository: minio/minio
+    tag: latest
+    pullPolicy: IfNotPresent
+  servicePort: 9000
+  consolePort: 9001
+  storageSize: 20Gi
+  rootUser: minioadmin
+  rootPassword: change-me-minio-root
+  defaultBucket: ai-interview-artifacts
+
+keycloak:
+  enabled: true
+  image:
+    repository: quay.io/keycloak/keycloak
+    tag: "26.1"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  servicePort: 8080
+  adminUser: admin
+  adminPassword: change-me-keycloak-admin
+  realm: ai-interview
+  clientId: ai-interview-web
+  clientSecret: change-me-oidc-client-secret
+
+observability:
+  eventPipeline:
+    enabled: true
+    grafanaDashboard:
+      enabled: true
+    prometheusRule:
+      enabled: true
+    alerts:
+      publishSuccessRate:
+        warning: 99
+        critical: 95
+        warningFor: 10m
+        criticalFor: 5m
+      consumeLatencyP95Seconds:
+        warning: 2
+        critical: 5
+        warningFor: 10m
+        criticalFor: 5m
+      dlqGrowthPerMinute:
+        warning: 30
+        critical: 60
+        warningFor: 10m
+        criticalFor: 5m
+      retryCount5m:
+        warning: 120
+        critical: 300
+        warningFor: 10m
+        criticalFor: 5m

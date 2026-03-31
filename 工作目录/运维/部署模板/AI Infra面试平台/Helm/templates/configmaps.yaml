@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-postgres-init
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+data:
+  01-init-multiple-dbs.sh: |
+    #!/bin/bash
+    set -e
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
+      DO
+      \$\$
+      BEGIN
+         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${APP_DB_USER}') THEN
+            CREATE ROLE ${APP_DB_USER} LOGIN PASSWORD '${APP_DB_PASSWORD}';
+         END IF;
+         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${KEYCLOAK_DB_USER}') THEN
+            CREATE ROLE ${KEYCLOAK_DB_USER} LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD}';
+         END IF;
+      END
+      \$\$;
+      SELECT 'CREATE DATABASE ${APP_DB_NAME} OWNER ${APP_DB_USER}'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${APP_DB_NAME}')\gexec
+      SELECT 'CREATE DATABASE ${KEYCLOAK_DB_NAME} OWNER ${KEYCLOAK_DB_USER}'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${KEYCLOAK_DB_NAME}')\gexec
+    EOSQL
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-interview.fullname" . }}-app-env
+  labels:
+    {{- include "ai-interview.labels" . | nindent 4 }}
+data:
+  APP_DB_HOST: {{ include "ai-interview.fullname" . }}-postgres
+  APP_DB_PORT: {{ .Values.postgres.servicePort | quote }}
+  APP_DB_NAME: {{ .Values.postgres.app.database | quote }}
+  APP_DB_USER: {{ .Values.postgres.app.username | quote }}
+  REDIS_URL: {{ printf "redis://%s-redis:%v/0" (include "ai-interview.fullname" .) .Values.redis.servicePort | quote }}
+  NATS_URL: {{ printf "nats://%s-nats:%v" (include "ai-interview.fullname" .) .Values.nats.servicePort | quote }}
+  NATS_AUDIT_STREAM: {{ .Values.nats.jetstream.streams.audit.name | quote }}
+  NATS_AUDIT_SUBJECT: {{ index .Values.nats.jetstream.streams.audit.subjects 0 | quote }}
+  NATS_DLQ_STREAM_INTERVIEW: {{ .Values.nats.jetstream.streams.dlqInterview.name | quote }}
+  NATS_DLQ_SUBJECT_INTERVIEW: {{ index .Values.nats.jetstream.streams.dlqInterview.subjects 0 | quote }}
+  NATS_DLQ_STREAM_EVALUATION: {{ .Values.nats.jetstream.streams.dlqEvaluation.name | quote }}
+  NATS_DLQ_SUBJECT_EVALUATION: {{ index .Values.nats.jetstream.streams.dlqEvaluation.subjects 0 | quote }}
+  NATS_DLQ_STREAM_AUDIT: {{ .Values.nats.jetstream.streams.dlqAudit.name | quote }}
+  NATS_DLQ_SUBJECT_AUDIT: {{ index .Values.nats.jetstream.streams.dlqAudit.subjects 0 | quote }}
+  S3_ENDPOINT: {{ printf "http://%s-minio:%v" (include "ai-interview.fullname" .) .Values.minio.servicePort | quote }}
+  S3_BUCKET: {{ .Values.minio.defaultBucket | quote }}
+  OIDC_ISSUER: {{ ternary (printf "http://%s-keycloak:%v/realms/%s" (include "ai-interview.fullname" .) .Values.keycloak.servicePort .Values.keycloak.realm) .Values.auth.external.issuer (eq .Values.auth.mode "embedded") | quote }}
+  NEXT_PUBLIC_API_BASE_URL: {{ printf "%s://%s" (include "ai-interview.externalScheme" .) .Values.global.hosts.api | quote }}
+  NEXT_PUBLIC_OIDC_ISSUER: {{ ternary (printf "%s://%s/realms/%s" (include "ai-interview.externalScheme" .) .Values.global.hosts.auth .Values.keycloak.realm) .Values.auth.external.issuer (eq .Values.auth.mode "embedded") | quote }}
+  NEXT_PUBLIC_OIDC_CLIENT_ID: {{ ternary .Values.keycloak.clientId .Values.auth.external.clientId (eq .Values.auth.mode "embedded") | quote }}
